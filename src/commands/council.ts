@@ -70,7 +70,7 @@ export function registerCouncilCommands(program: Command, { repoRoot, config }: 
 
   program
     .command('review <session>')
-    .description('Invoke the Chief Architect for 8-point industry standards sign-off')
+    .description('Invoke the Chief Architect for 12-point industry standards sign-off')
     .action(action(async (sessionId: string) => {
       const res = await new ArchitectureReviewEngine(config).runReview(sessionId);
       console.log(`\nArchitecture Review Verdict: ${res.verdict}`);

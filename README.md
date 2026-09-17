@@ -28,7 +28,7 @@ Single-agent AI coders hallucinate, accept ambiguous requirements, make silent b
 **Open Councilmen** introduces an autonomous multi-agent separation of powers:
 1. **The Council Lead & Principal PM** (*Synapse Archetype*): Enforces user value, jobs-to-be-done and scope boundaries, drafts and revises the Product Brief + PRD, and gives the final sign-off.
 2. **The Chief Engineer & Developer** (*Claude Code Archetype*): Owns technical ground truth. Challenges the PM with `file:line` citations from a read-only worktree, ratifies the PRD, and later implements it in an isolated clone.
-3. **The Chief Architect & Arbiter** (*Grok Archetype*): Zero-tool impartial judge. Binding rulings on deadlocked objections (`STANDS`, `OVERRULED`, `MEASURE`), binding answers on any rule the standards leave undefined, and zero-concern sign-off against an 8-point industry standards checklist plus the project's engineering standards.
+3. **The Chief Architect & Arbiter** (*Grok Archetype*): Zero-tool impartial judge. Binding rulings on deadlocked objections (`STANDS`, `OVERRULED`, `MEASURE`), binding answers on any rule the standards leave undefined, and zero-concern sign-off against a 12-point industry standards checklist (security, supply chain, reliability, delivery, privacy, accessibility, contracts, performance and AI components) plus the project's engineering standards.
 4. **The Executive Operator** (*You*): Never in the loop. Shown the PRD **only after all three seats have signed off the identical document with zero concerns**; one typed approval starts coding, verification and pull request creation.
 
 ---
@@ -39,6 +39,7 @@ Single-agent AI coders hallucinate, accept ambiguous requirements, make silent b
 * **Binding Arbitration**: From `tiebreak_round` on, every unresolved round is arbitrated by the Chief Architect; if `max_rounds` passes without unanimous sign-off the session stops as `STALLED` and nothing is presented to you.
 * **No Human in the Loop**: Any seat that needs a rule the standards don't define writes `QUESTION FOR ARCHITECT: …`; the Chief Architect's ruling binds every seat. This applies during execution too.
 * **Unanimous, Zero-Concern, Hash-Bound Sign-Off**: The Operator only sees a PRD that the Chief Engineer ratified (0 objections), the Chief Architect signed off with zero REQUIRED and zero ADVISORY concerns, and the Council Lead signed off — all on the same SHA-256. Finalization and approval both re-check this.
+* **12-Point Industry Standards Review**: Every specification is audited against named current practice — SOC 2/ISO 27001 change management, OWASP ASVS + NIST SSDF secure development, SLSA/SBOM supply chain, test-pyramid and release engineering, GDPR/DPIA data governance, ISO 42010 ADRs and ISO 29148 requirement quality, SRE SLOs with OpenTelemetry, progressive delivery and expand-contract migrations, WCAG 2.2 AA and ICU i18n, SemVer/OpenAPI/RFC 9457 contracts, p95 and cost budgets, and OWASP LLM Top 10 for AI components.
 * **Engineering Standards**: `.councilmen/standards/` — 00 Manifest, 01 Architecture, 02 Coding Practices, 03 Documentation — is given to every seat; seats cite rules by number, name and section.
 * **Subscription-First (Zero API Token Burn)**: Drives the CLIs you already pay for (Claude Code, Grok, Antigravity/Gemini) or local Ollama.
 * **Verified Hands-Off Execution**: The Chief Engineer commits on `council/<slug>` in an isolated clone. Blockers go to the Chief Architect and failed checks go back to the Chief Engineer (bounded by `execution_attempts`). The harness then checks for commits and a clean tree, re-runs your lint/test commands, pushes, opens the PR, and (optionally) enables GitHub auto-merge. Anything that still fails is reported as `BLOCKED` — never as done.
@@ -144,7 +145,7 @@ flowchart TD
     Eng -->|QUESTION FOR ARCHITECT| Rule[Chief Architect: binding ruling for all seats]
     Rule --> PM
     Eng -->|max_rounds reached| Stall[STALLED: item parked, no document]
-    Eng -->|SHIP IT and 0 objections| Arch[Chief Architect: 8-point + standards sign-off]
+    Eng -->|SHIP IT and 0 objections| Arch[Chief Architect: 12-point + standards sign-off]
     Arch -->|any concern| PM
     Arch -->|SIGN-OFF, zero concerns| Lead[Lead PM: final sign-off]
     Lead -->|RETHINK| PM

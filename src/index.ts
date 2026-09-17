@@ -16,4 +16,5 @@ export * from './engine/questions.js';
 export * from './adapters/base.js';
 export * from './adapters/registry.js';
 export * from './utils/paths.js';
+export * from './utils/prompts.js';
 export * from './office/server.js';

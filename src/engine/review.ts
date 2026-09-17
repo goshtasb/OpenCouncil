@@ -49,7 +49,7 @@ export class ArchitectureReviewEngine {
       '',
       ...formatArchitectRulings(this.sessionManager.loadArchitectRulings(sessionId)),
       '## Instructions',
-      'Audit this specification against the 8-point industry standards checklist per the Architecture Review contract. Output one line per concern, `CONCERN <n>: REQUIRED | ADVISORY — <principle/standard> — <explanation>`, then `VERDICT: SIGN-OFF | SIGN-OFF WITH CONCERNS | RETHINK`, then `SUMMARY: <sentence>`. Only a plain SIGN-OFF with zero concerns lets the document proceed to the Operator.'
+      'Audit this specification against the 12-point industry standards checklist per the Architecture Review contract. Mark inapplicable points `POINT <n>: N/A — <reason>` rather than skipping them. Output one line per concern, `CONCERN <n>: REQUIRED | ADVISORY — <principle/standard> — <explanation>`, then `VERDICT: SIGN-OFF | SIGN-OFF WITH CONCERNS | RETHINK`, then `SUMMARY: <sentence>`. Only a plain SIGN-OFF with zero concerns lets the document proceed to the Operator.'
     ].join('\n');
 
     fs.writeFileSync(path.join(reviewDir, 'prompt.md'), prompt, 'utf8');
