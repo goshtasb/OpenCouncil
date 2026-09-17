@@ -5,18 +5,19 @@ import * as path from 'path';
 import { getTemplatesDir } from '../config.js';
 import { PipelineManager } from '../engine/pipeline.js';
 import { SessionManager } from '../engine/session.js';
+import { resolveGates, DEFAULT_GATE_TIMEOUT_SECONDS } from '../engine/gates.js';
 import { OfficeServer } from '../office/server.js';
 import { getAdapter } from '../adapters/registry.js';
 import { projectStateDir } from '../utils/paths.js';
 import { logger } from '../utils/logger.js';
 import { CliContext, action, copyDir } from './shared.js';
 
-export function registerProjectCommands(program: Command, { repoRoot, config }: CliContext): void {
+export function registerProjectCommands(program: Command, ctx: CliContext): void {
   program
     .command('init')
     .description('Initialize Open Councilmen templates in the current repository')
     .action(action(() => {
-      const targetDir = path.join(repoRoot, '.councilmen');
+      const targetDir = path.join(ctx.repoRoot, '.councilmen');
       if (fs.existsSync(targetDir)) {
         logger.warn('.councilmen configuration already exists.');
         return;
@@ -27,7 +28,7 @@ export function registerProjectCommands(program: Command, { repoRoot, config }: 
       copyDir(path.join(templates, 'references'), path.join(targetDir, 'references'));
       copyDir(path.join(templates, 'standards'), path.join(targetDir, 'standards'));
       logger.success('Initialized .councilmen/ with configuration, constitution, personas, contracts, and engineering standards.');
-      logger.info(`Harness state (backlog, sessions, worktrees) is stored in ${projectStateDir(repoRoot)}`);
+      logger.info(`Harness state (backlog, sessions, worktrees) is stored in ${projectStateDir(ctx.repoRoot)}`);
     }));
 
   program
@@ -36,14 +37,14 @@ export function registerProjectCommands(program: Command, { repoRoot, config }: 
     .option('--no-live', 'Only check that the CLIs are installed (no model calls)')
     .action(action(async (options: { live: boolean }) => {
       let failures = 0;
-      for (const [seat, seatConfig] of Object.entries(config.seats)) {
+      for (const [seat, seatConfig] of Object.entries(ctx.config.seats)) {
         const label = `${seat} (${seatConfig.provider}${seatConfig.model ? `, model ${seatConfig.model}` : ''})`;
         try {
           const adapter = getAdapter(seatConfig.provider);
           if (!(await adapter.isAvailable())) throw new Error(`'${seatConfig.provider}' CLI not found on PATH`);
           if (options.live) {
             const reply = await adapter.runPrompt('Reply with the single word: PONG', {
-              cwd: repoRoot,
+              cwd: ctx.repoRoot,
               model: seatConfig.model,
               timeoutSeconds: 180
             });
@@ -107,13 +108,34 @@ export function registerProjectCommands(program: Command, { repoRoot, config }: 
     }));
 
   program
+    .command('gates')
+    .description('preview verification gates')
+    .action(action(() => {
+      const gates = resolveGates(ctx.config);
+      if (gates.length === 0) {
+        console.log('No verification gates are configured. Nothing is verified before a pull request is opened.');
+        return;
+      }
+      for (const gate of gates) {
+        const timeoutSeconds = gate.timeout_seconds ?? DEFAULT_GATE_TIMEOUT_SECONDS;
+        console.log([
+          gate.name,
+          gate.required !== false ? 'required' : 'advisory',
+          `${timeoutSeconds}s`,
+          gate.standard || 'project gate',
+          gate.command
+        ].join('  '));
+      }
+    }));
+
+  program
     .command('office')
     .description('Launch the live retro pixel-art office web dashboard (localhost only)')
     .option('-p, --port <number>', 'Port to listen on (default: office.port from config)')
     .action(action(async (options: { port?: string }) => {
-      const port = options.port ? parseInt(options.port, 10) : config.office.port;
-      const actualPort = await new OfficeServer(config).start(port);
-      if (config.office.auto_open) {
+      const port = options.port ? parseInt(options.port, 10) : ctx.config.office.port;
+      const actualPort = await new OfficeServer(ctx.config).start(port);
+      if (ctx.config.office.auto_open) {
         const url = `http://localhost:${actualPort}`;
         const opener = process.platform === 'darwin' ? ['open', [url]] : process.platform === 'win32' ? ['cmd', ['/c', 'start', '', url]] : ['xdg-open', [url]];
         spawn(opener[0] as string, opener[1] as string[], { stdio: 'ignore', detached: true }).on('error', () => {}).unref();
