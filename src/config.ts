@@ -11,27 +11,29 @@ export const DEFAULT_CONFIG: CouncilConfig = {
     package_manager: 'npm',
     install_command: 'npm install',
     test_command: 'npm test',
-    lint_command: 'npm run lint'
+    lint_command: ''
   },
   council: {
     max_rounds: 10,
     tiebreak_round: 7,
-    round_timeout_seconds: 900
+    round_timeout_seconds: 900,
+    execution_timeout_seconds: 3600,
+    execution_attempts: 3
   },
   seats: {
     lead_pm: {
-      provider: 'gemini-cli',
-      model: 'gemini-2.0-flash',
+      provider: 'antigravity',
+      model: 'gemini-3.1-pro-high',
       persona: '.councilmen/personas/lead-pm.md'
     },
     chief_engineer: {
       provider: 'claude-code',
-      model: 'claude-3-7-sonnet',
+      model: 'opus',
       persona: '.councilmen/personas/chief-engineer.md'
     },
     chief_architect: {
       provider: 'grok-cli',
-      model: 'grok-4',
+      model: 'grok-4.6',
       persona: '.councilmen/personas/chief-architect.md'
     }
   },
@@ -64,13 +66,18 @@ export function loadConfig(startDir: string = process.cwd()): CouncilConfig {
   }
   try {
     const content = fs.readFileSync(configFile, 'utf8');
-    const parsed = yaml.load(content) as Partial<CouncilConfig>;
+    const parsed = (yaml.load(content) || {}) as Partial<CouncilConfig>;
+    const seats = parsed.seats || ({} as Partial<CouncilConfig['seats']>);
     return {
       ...DEFAULT_CONFIG,
       ...parsed,
       project: { ...DEFAULT_CONFIG.project, ...parsed.project },
       council: { ...DEFAULT_CONFIG.council, ...parsed.council },
-      seats: { ...DEFAULT_CONFIG.seats, ...parsed.seats },
+      seats: {
+        lead_pm: { ...DEFAULT_CONFIG.seats.lead_pm, ...seats.lead_pm },
+        chief_engineer: { ...DEFAULT_CONFIG.seats.chief_engineer, ...seats.chief_engineer },
+        chief_architect: { ...DEFAULT_CONFIG.seats.chief_architect, ...seats.chief_architect }
+      },
       backlog: { ...DEFAULT_CONFIG.backlog, ...parsed.backlog },
       office: { ...DEFAULT_CONFIG.office, ...parsed.office }
     };

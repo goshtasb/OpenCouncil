@@ -30,6 +30,22 @@ export interface TieBreakResult {
   summary: string;
 }
 
+export interface ArchitectRuling {
+  id: number;
+  askedBy: string;
+  stage: string;
+  question: string;
+  ruling: string;
+}
+
+export interface LeadSignoffResult {
+  round: number;
+  verdict: 'SIGN-OFF' | 'RETHINK' | 'UNPARSEABLE';
+  summary: string;
+  planSha256: string;
+  replySha256: string;
+}
+
 export interface ArchitectureReviewResult {
   round: number;
   verdict: ArchitectVerdictType;
@@ -51,7 +67,7 @@ export type SessionStatus =
   | 'AWAITING_APPROVAL'
   | 'APPROVED'
   | 'REJECTED'
-  | 'ESCALATED'
+  | 'STALLED'
   | 'IN_EXECUTION'
   | 'DONE'
   | 'BLOCKED';
@@ -68,6 +84,7 @@ export interface CouncilSessionMeta {
   createdAt: string;
   parentSession?: string;
   continuesSession?: string;
+  backlogItem?: string;
 }
 
 export interface CouncilConfig {
@@ -84,6 +101,8 @@ export interface CouncilConfig {
     max_rounds: number;
     tiebreak_round: number;
     round_timeout_seconds: number;
+    execution_timeout_seconds: number;
+    execution_attempts: number;
   };
   seats: {
     lead_pm: SeatConfig;
@@ -101,7 +120,7 @@ export interface CouncilConfig {
 }
 
 export interface SeatConfig {
-  provider: 'claude-code' | 'grok-cli' | 'gemini-cli' | 'ollama' | 'custom' | string;
+  provider: 'claude-code' | 'grok-cli' | 'gemini-cli' | 'antigravity' | 'ollama' | string;
   model: string;
   persona: string;
 }

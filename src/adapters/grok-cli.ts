@@ -2,7 +2,7 @@ import execa from 'execa';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { AgentAdapter, AgentRunOptions } from './base.js';
+import { AgentAdapter, AgentRunOptions, requireOutput } from './base.js';
 
 export class GrokCliAdapter implements AgentAdapter {
   readonly name = 'grok-cli';
@@ -36,16 +36,29 @@ export class GrokCliAdapter implements AgentAdapter {
       '--disable-web-search',
       '--no-subagents',
       '--no-memory',
-      '--tools', '',
-      '--max-turns', '10',
       '--output-format', 'plain'
     ];
+
+    if (options.permissionMode === 'auto') {
+      args.push('--always-approve');
+    } else if (options.permissionMode === 'exec') {
+      args.push('--permission-mode', 'acceptEdits');
+    } else if (options.permissionMode === 'plan') {
+      args.push('--permission-mode', 'plan', '--max-turns', '40');
+    } else {
+      // No-tool seat (e.g. the Chief Architect). `--tools ''` does not disable tools in grok 0.2.x;
+      // an unknown allow-list plus a deny-all rule does.
+      args.push('--tools', 'none', '--deny', '*', '--max-turns', '10');
+    }
 
     if (options.model) {
       args.unshift('-m', options.model);
     }
     if (options.systemPrompt) {
       args.push('--system-prompt-override', options.systemPrompt);
+    }
+    if (options.appendArgs) {
+      args.push(...options.appendArgs);
     }
 
     try {
@@ -54,7 +67,7 @@ export class GrokCliAdapter implements AgentAdapter {
         timeout: (options.timeoutSeconds || 480) * 1000
       });
       const { stdout } = await subprocess;
-      return stdout;
+      return requireOutput(this.name, stdout);
     } finally {
       try {
         fs.rmSync(tempDir, { recursive: true, force: true });

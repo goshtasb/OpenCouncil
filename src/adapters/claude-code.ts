@@ -1,5 +1,11 @@
 import execa from 'execa';
-import { AgentAdapter, AgentRunOptions } from './base.js';
+import { AgentAdapter, AgentRunOptions, requireOutput } from './base.js';
+
+const PERMISSION_MODES: Record<NonNullable<AgentRunOptions['permissionMode']>, string> = {
+  plan: 'plan',
+  exec: 'acceptEdits',
+  auto: 'bypassPermissions'
+};
 
 export class ClaudeCodeAdapter implements AgentAdapter {
   readonly name = 'claude-code';
@@ -15,8 +21,13 @@ export class ClaudeCodeAdapter implements AgentAdapter {
 
   async runPrompt(prompt: string, options: AgentRunOptions): Promise<string> {
     const args: string[] = ['-p'];
-    if (options.permissionMode === 'plan') {
-      args.push('--permission-mode', 'plan');
+    if (options.permissionMode) {
+      args.push('--permission-mode', PERMISSION_MODES[options.permissionMode]);
+    } else {
+      // No-tool seat (e.g. the Chief Architect judges only the text it is given).
+      args.push('--permission-mode', 'plan', '--tools', '');
+    }
+    if (options.permissionMode !== 'auto') {
       args.push('--strict-mcp-config');
     }
     if (options.model) {
@@ -29,13 +40,11 @@ export class ClaudeCodeAdapter implements AgentAdapter {
       args.push(...options.appendArgs);
     }
 
-    const subprocess = execa('claude', args, {
+    const { stdout } = await execa('claude', args, {
       cwd: options.cwd,
       input: prompt,
       timeout: (options.timeoutSeconds || 900) * 1000
     });
-
-    const { stdout } = await subprocess;
-    return stdout;
+    return requireOutput(this.name, stdout);
   }
 }

@@ -1,5 +1,5 @@
 import execa from 'execa';
-import { AgentAdapter, AgentRunOptions } from './base.js';
+import { AgentAdapter, AgentRunOptions, requireOutput, withPreamble } from './base.js';
 
 export class GeminiCliAdapter implements AgentAdapter {
   readonly name = 'gemini-cli';
@@ -9,37 +9,33 @@ export class GeminiCliAdapter implements AgentAdapter {
       await execa('gemini', ['--version']);
       return true;
     } catch {
-      try {
-        await execa('agy', ['--version']);
-        return true;
-      } catch {
-        return false;
-      }
+      return false;
     }
   }
 
   async runPrompt(prompt: string, options: AgentRunOptions): Promise<string> {
-    let bin = 'gemini';
-    try {
-      await execa('gemini', ['--version']);
-    } catch {
-      bin = 'agy';
+    const args: string[] = ['--output-format', 'text'];
+    if (options.permissionMode === 'auto') {
+      args.push('--approval-mode', 'yolo');
+    } else if (options.permissionMode === 'exec') {
+      args.push('--approval-mode', 'auto_edit');
+    } else {
+      args.push('--approval-mode', 'plan');
     }
-
-    const args: string[] = ['-p', prompt, '--output-format', 'text'];
     if (options.model) {
       args.push('--model', options.model);
     }
-    if (options.systemPrompt) {
-      args.push('--system-prompt', options.systemPrompt);
+    if (options.appendArgs) {
+      args.push(...options.appendArgs);
     }
+    // Headless mode: the prompt arrives on stdin and `-p` is appended to it.
+    args.push('-p', 'Follow the instructions provided above.');
 
-    const subprocess = execa(bin, args, {
+    const { stdout } = await execa('gemini', args, {
       cwd: options.cwd,
+      input: withPreamble(prompt, options.systemPrompt),
       timeout: (options.timeoutSeconds || 900) * 1000
     });
-
-    const { stdout } = await subprocess;
-    return stdout;
+    return requireOutput(this.name, stdout);
   }
 }

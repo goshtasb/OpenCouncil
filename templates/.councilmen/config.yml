@@ -4,42 +4,45 @@ version: 1
 # Project Settings
 project:
   name: "My Project"
-  base_branch: "main"               # Branch to branch from and open PRs against (e.g. main, dev)
-  package_manager: "npm"            # npm, pnpm, yarn, poetry, cargo, go
-  install_command: "npm install"    # Command to install dependencies in clean worktrees
-  test_command: "npm test"          # Command to verify full test suite
-  lint_command: "npm run lint"      # Command to run linter / typecheck
+  base_branch: "main"               # Branch the pull request targets (e.g. main, dev)
+  package_manager: "npm"            # Informational: npm, pnpm, yarn, poetry, cargo, go
+  install_command: "npm install"    # Run (via shell) in the execution clone before the Chief Engineer starts
+  test_command: "npm test"          # Must pass before the harness pushes and opens the pull request
+  lint_command: ""                  # Optional; when set it must also pass (e.g. "npm run lint")
 
 # Council Configuration
 council:
-  max_rounds: 10                    # Maximum deliberation rounds before mandatory tie-break
-  tiebreak_round: 7                 # Earliest round the Arbiter can be invoked
-  round_timeout_seconds: 900        # Per-round timeout (15 mins)
+  max_rounds: 10                    # Rounds before the session stops as STALLED (never presented to the Operator)
+  tiebreak_round: 7                 # From this round on, every non-converged round is arbitrated
+  round_timeout_seconds: 900        # Per-call timeout for deliberation, tie-break and review (15 mins)
+  execution_timeout_seconds: 3600   # Timeout per autonomous execution run (1 hour)
+  execution_attempts: 3             # Chief Engineer runs per execution (resumes after Architect rulings or failed verification)
 
 # Council Seats & Model Providers
-# Supports subscription CLIs (Claude Code, Grok CLI, Gemini/Antigravity CLI), local models (Ollama), or APIs
+# Providers: claude-code, grok-cli, antigravity (agy), gemini-cli, ollama
+# Run `councilmen doctor` to verify every seat answers before opening a session.
 seats:
   lead_pm:
-    provider: "gemini-cli"          # Options: gemini-cli, claude-code, grok-cli, ollama, custom
-    model: "gemini-2.0-flash"
+    provider: "antigravity"
+    model: "gemini-3.1-pro-high"    # `agy models` lists valid ids
     persona: ".councilmen/personas/lead-pm.md"
 
   chief_engineer:
-    provider: "claude-code"         # Options: claude-code, aider, copilot-cli, ollama, custom
-    model: "claude-3-7-sonnet"
+    provider: "claude-code"
+    model: "opus"                   # Claude Code alias; any id accepted by `claude --model`
     persona: ".councilmen/personas/chief-engineer.md"
 
   chief_architect:
-    provider: "grok-cli"            # Options: grok-cli, claude-code, ollama, custom
-    model: "grok-4"
+    provider: "grok-cli"
+    model: "grok-4.6"               # `grok models` lists valid ids
     persona: ".councilmen/personas/chief-architect.md"
 
 # Backlog & Autonomous Execution
 backlog:
-  wip_limit: 1                      # Strict WIP limit: one task deliberated/executed at a time
-  auto_merge_dev: true              # Automatically merge pull requests once CI is green
+  wip_limit: 1                      # Max backlog items in council/approval/execution at once
+  auto_merge_dev: true              # Enable GitHub auto-merge (squash) on the PR; GitHub merges once required checks pass
 
 # Office Web Dashboard
 office:
   port: 4321
-  auto_open: true
+  auto_open: true                   # Open the dashboard in the browser when `councilmen office` starts

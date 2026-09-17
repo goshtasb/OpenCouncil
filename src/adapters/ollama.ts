@@ -1,5 +1,5 @@
 import execa from 'execa';
-import { AgentAdapter, AgentRunOptions } from './base.js';
+import { AgentAdapter, AgentRunOptions, requireOutput } from './base.js';
 
 export class OllamaAdapter implements AgentAdapter {
   readonly name = 'ollama';
@@ -27,6 +27,6 @@ export class OllamaAdapter implements AgentAdapter {
     });
 
     const { stdout } = await subprocess;
-    return stdout;
+    return requireOutput(this.name, stdout);
   }
 }

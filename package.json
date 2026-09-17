@@ -17,7 +17,7 @@
     "build": "tsc && mkdir -p dist/office/public && cp -r src/office/public/* dist/office/public/",
     "watch": "tsc -w",
     "start": "node bin/councilmen.js",
-    "test": "echo \"Running test suite...\" && exit 0"
+    "test": "node --test test/*.test.cjs"
   },
   "keywords": [
     "ai",

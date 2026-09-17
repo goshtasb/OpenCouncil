@@ -1,22 +1,32 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
 import { BacklogItem } from '../types.js';
+import { projectStateDir } from '../utils/paths.js';
+
+const ACTIVE_STATUSES: BacklogItem['status'][] = ['in-council', 'awaiting-approval', 'in-execution'];
+
+export function syncBacklogItem(pipeline: PipelineManager, itemId: string | undefined, status: BacklogItem['status'], session?: string): void {
+  if (!itemId) return;
+  if (!pipeline.getItem(itemId)) return;
+  pipeline.updateItemStatus(itemId, status, session);
+}
 
 export class PipelineManager {
   readonly backlogDir: string;
 
   constructor(customBacklogDir?: string) {
-    this.backlogDir = customBacklogDir || path.join(os.homedir(), '.councilmen', 'backlog');
+    this.backlogDir = customBacklogDir || path.join(projectStateDir(), 'backlog');
     if (!fs.existsSync(this.backlogDir)) {
       fs.mkdirSync(this.backlogDir, { recursive: true });
     }
   }
 
   addItem(title: string, priority: number = 5, body: string = '', kind: string = 'feature'): BacklogItem {
+    title = title.replace(/\s+/g, ' ').trim();
+    if (!title) throw new Error('Backlog item title must not be empty.');
     const existing = this.listItems();
-    const nextNum = existing.length + 1;
-    const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
+    const nextNum = existing.reduce((max, i) => Math.max(max, parseInt(i.id, 10) || 0), 0) + 1;
+    const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40).replace(/-$/, '') || 'item';
     const id = String(nextNum).padStart(3, '0');
     const fileName = `${id}-${slug}.md`;
     const filePath = path.join(this.backlogDir, fileName);
@@ -54,7 +64,19 @@ export class PipelineManager {
 
   getActiveItem(): BacklogItem | null {
     const items = this.listItems();
-    return items.find(i => ['in-council', 'awaiting-approval', 'in-execution', 'needs-decision'].includes(i.status)) || null;
+    return items.find(i => ACTIVE_STATUSES.includes(i.status)) || null;
+  }
+
+  /** Returns the item if it may enter council now: it must be `todo` and the WIP limit must have room. */
+  assertCanEnterCouncil(id: string, wipLimit: number): BacklogItem {
+    const item = this.getItem(id);
+    if (!item) throw new Error(`Backlog item ${id} not found.`);
+    if (item.status !== 'todo') throw new Error(`Backlog item ${item.id} is '${item.status}', not 'todo'.`);
+    const active = this.listItems().filter(i => ACTIVE_STATUSES.includes(i.status));
+    if (active.length >= wipLimit) {
+      throw new Error(`WIP limit ${wipLimit} reached: item ${active[0].id} "${active[0].title}" is '${active[0].status}'.`);
+    }
+    return item;
   }
 
   getNextTodoItem(): BacklogItem | null {
@@ -63,9 +85,14 @@ export class PipelineManager {
     return todos.sort((a, b) => a.priority - b.priority)[0];
   }
 
+  getItem(id: string): BacklogItem | null {
+    return this.listItems().find(i => i.id === id) || null;
+  }
+
   updateItemStatus(id: string, status: BacklogItem['status'], session?: string): void {
-    const item = this.listItems().find(i => i.id === id);
+    const item = this.getItem(id);
     if (!item) throw new Error(`Backlog item ${id} not found.`);
+    session = session || item.session;
 
     const fileName = `${item.id}-${item.slug}.md`;
     const filePath = path.join(this.backlogDir, fileName);

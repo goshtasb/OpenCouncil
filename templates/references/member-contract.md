@@ -6,6 +6,8 @@ This contract defines the reply structure and protocol during the deliberation p
 - You operate in a clean git worktree or isolated checkout at the target commit baseline.
 - Do not make persistent modifications or edits during this phase. Deliberation produces the specification; execution occurs only after formal approval.
 - Research the subject before answering: verify claims against the codebase, cite `file:line`, and confirm that all requirements are testable as written.
+- Check the draft against the Project Engineering Standards that apply to this task type (per `00-manifest.md`). A planned change that would violate a standard is an objection; cite the rule by standard number, name and section (e.g. `01 Architecture Rule 2.2`).
+- If a rule you need is not defined by the standards, the constitution or an earlier Chief Architect ruling, do not assume and do not ask the Operator: add `QUESTION FOR ARCHITECT: <question>`. The ruling is binding on every seat. A reply containing a question does not converge.
 
 ## Reply Format (Strict Machine Parsing)
 Your reply must begin with exactly these two header lines:

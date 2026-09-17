@@ -101,7 +101,7 @@
       <span>COUNCIL PIPELINE BACKLOG</span>
       <span id="close-btn">&#10005;</span>
     </div>
-    <div id="modal-body" id="pipeline-list">
+    <div id="modal-body">
       <div class="backlog-row">No active items.</div>
     </div>
   </div>
@@ -286,11 +286,12 @@
         body.innerHTML = '<div>Backlog is currently empty. Use <code>councilmen backlog add "Feature name"</code> to queue tasks.</div>';
         return;
       }
+      const esc = (v) => String(v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
       body.innerHTML = items.map(item => `
         <div class="backlog-row">
-          <span class="chip ${item.status}">${item.status}</span>
-          <strong>${item.id}</strong>
-          <span>${item.title}</span>
+          <span class="chip ${esc(item.status)}">${esc(item.status)}</span>
+          <strong>${esc(item.id)}</strong>
+          <span>${esc(item.title)}</span>
         </div>
       `).join('');
     }
