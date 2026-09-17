@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+.councilmen/sessions/
+.councilmen/worktrees/
+.councilmen/backlog/
+.councilmen/exec/
+.councilmen/.env*
+!.councilmen/config.yml
+!.councilmen/CONSTITUTION.md
+!.councilmen/DELEGATION.md

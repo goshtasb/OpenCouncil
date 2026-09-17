@@ -1,0 +1,45 @@
+# Open Councilmen Project Configuration
+version: 1
+
+# Project Settings
+project:
+  name: "My Project"
+  base_branch: "main"               # Branch to branch from and open PRs against (e.g. main, dev)
+  package_manager: "npm"            # npm, pnpm, yarn, poetry, cargo, go
+  install_command: "npm install"    # Command to install dependencies in clean worktrees
+  test_command: "npm test"          # Command to verify full test suite
+  lint_command: "npm run lint"      # Command to run linter / typecheck
+
+# Council Configuration
+council:
+  max_rounds: 10                    # Maximum deliberation rounds before mandatory tie-break
+  tiebreak_round: 7                 # Earliest round the Arbiter can be invoked
+  round_timeout_seconds: 900        # Per-round timeout (15 mins)
+
+# Council Seats & Model Providers
+# Supports subscription CLIs (Claude Code, Grok CLI, Gemini/Antigravity CLI), local models (Ollama), or APIs
+seats:
+  lead_pm:
+    provider: "gemini-cli"          # Options: gemini-cli, claude-code, grok-cli, ollama, custom
+    model: "gemini-2.0-flash"
+    persona: ".councilmen/personas/lead-pm.md"
+
+  chief_engineer:
+    provider: "claude-code"         # Options: claude-code, aider, copilot-cli, ollama, custom
+    model: "claude-3-7-sonnet"
+    persona: ".councilmen/personas/chief-engineer.md"
+
+  chief_architect:
+    provider: "grok-cli"            # Options: grok-cli, claude-code, ollama, custom
+    model: "grok-4"
+    persona: ".councilmen/personas/chief-architect.md"
+
+# Backlog & Autonomous Execution
+backlog:
+  wip_limit: 1                      # Strict WIP limit: one task deliberated/executed at a time
+  auto_merge_dev: true              # Automatically merge pull requests once CI is green
+
+# Office Web Dashboard
+office:
+  port: 4321
+  auto_open: true

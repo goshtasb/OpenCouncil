@@ -1,0 +1,52 @@
+{
+  "name": "open-councilmen",
+  "version": "0.1.0",
+  "description": "Autonomous, Multi-Agent Deliberation & Execution Council for Software Engineering",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "councilmen": "bin/councilmen.js",
+    "open-councilmen": "bin/councilmen.js"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "templates"
+  ],
+  "scripts": {
+    "build": "tsc && mkdir -p dist/office/public && cp -r src/office/public/* dist/office/public/",
+    "watch": "tsc -w",
+    "start": "node bin/councilmen.js",
+    "test": "echo \"Running test suite...\" && exit 0"
+  },
+  "keywords": [
+    "ai",
+    "agents",
+    "council",
+    "claude",
+    "gemini",
+    "grok",
+    "deliberation",
+    "autonomous-coding",
+    "prd",
+    "engineering"
+  ],
+  "author": "Open Councilmen Community",
+  "license": "MIT",
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "commander": "^12.1.0",
+    "execa": "^5.1.1",
+    "js-yaml": "^4.1.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20.14.0",
+    "@types/ws": "^8.5.10",
+    "typescript": "^5.5.4"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

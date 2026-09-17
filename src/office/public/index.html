@@ -1,0 +1,302 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Open Councilmen — Office Dashboard</title>
+  <style>
+    html, body {
+      margin: 0;
+      background: #0f380f;
+      height: 100%;
+      overflow: hidden;
+      font-family: 'Courier New', Menlo, monospace;
+    }
+    #wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+    }
+    canvas {
+      image-rendering: pixelated;
+      width: min(96vw, calc(96vh * 1.5) - 40px);
+      height: auto;
+      border: 4px solid #306230;
+      border-radius: 6px;
+      box-shadow: 0 0 0 3px #8bac0f, 0 10px 30px rgba(0,0,0,0.6);
+      cursor: pointer;
+    }
+    #ticker {
+      width: min(96vw, calc(96vh * 1.5) - 40px);
+      box-sizing: border-box;
+      margin-top: 8px;
+      background: #9bbc0f;
+      color: #0f380f;
+      font-size: 13px;
+      padding: 6px 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      border-radius: 4px;
+      font-weight: bold;
+    }
+    #modal {
+      display: none;
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: min(90vw, 700px);
+      max-height: 80vh;
+      background: #f4f1de;
+      color: #0f380f;
+      border: 4px solid #306230;
+      box-shadow: 0 0 0 3px #8bac0f, 0 15px 50px rgba(0,0,0,0.7);
+      border-radius: 6px;
+      flex-direction: column;
+      z-index: 100;
+    }
+    #modal-header {
+      background: #306230;
+      color: #e8f5c8;
+      padding: 10px 14px;
+      font-weight: bold;
+      display: flex;
+      justify-content: space-between;
+    }
+    #close-btn { cursor: pointer; }
+    #modal-body {
+      padding: 14px;
+      overflow-y: auto;
+      font-size: 13px;
+    }
+    .backlog-row {
+      display: flex;
+      gap: 10px;
+      padding: 6px 0;
+      border-bottom: 1px dotted #8bac0f;
+    }
+    .chip {
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: bold;
+      background: #306230;
+      color: #fff;
+    }
+    .chip.todo { background: #555; }
+    .chip.in-council { background: #b06a3a; }
+    .chip.in-execution { background: #1b5e20; }
+  </style>
+</head>
+<body>
+  <div id="wrap">
+    <canvas id="c" width="480" height="320"></canvas>
+    <div id="ticker">Connecting to Open Councilmen harness...</div>
+  </div>
+
+  <div id="modal">
+    <div id="modal-header">
+      <span>COUNCIL PIPELINE BACKLOG</span>
+      <span id="close-btn">&#10005;</span>
+    </div>
+    <div id="modal-body" id="pipeline-list">
+      <div class="backlog-row">No active items.</div>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d');
+    const ticker = document.getElementById('ticker');
+    const modal = document.getElementById('modal');
+    const closeBtn = document.getElementById('close-btn');
+
+    let state = {
+      synapse: { state: 'idle', detail: 'Ready' },
+      claude: { state: 'idle', detail: 'Ready' },
+      grok: { state: 'idle', detail: 'Ready' },
+      ticker: { text: 'Open Councilmen initialized. Standing by.' },
+      pipeline: { items: [] }
+    };
+
+    let frame = 0;
+
+    const P = {
+      wall: '#8bac0f', wallD: '#306230', wallL: '#a3c41a',
+      floor: '#9bbc0f', floorD: '#7f9e0d', ink: '#0f380f',
+      desk: '#b06a3a', deskD: '#6b3417', deskL: '#c98a55',
+      mon: '#1b2a3a', monF: '#2f4560', monOn: '#7ef0ff', monTxt: '#173a4a',
+      paper: '#f4f1de', skin: '#f1c27d', hair: '#3b2412',
+      syn: '#c2185b', synD: '#7f0f3c',
+      cla: '#e08a2e', claD: '#8a4f12',
+      grk: '#3d5afe', grkD: '#1a2fa0',
+      chair: '#2d2d2d', z: '#dfe8ff'
+    };
+
+    function px(col, X, Y, w = 1, h = 1) {
+      ctx.fillStyle = col;
+      ctx.fillRect(X, Y, w, h);
+    }
+
+    function txt(t, X, Y, size = 9, col = P.ink) {
+      ctx.fillStyle = col;
+      ctx.font = size + 'px Courier New, monospace';
+      ctx.fillText(t, X, Y);
+    }
+
+    function drawRoom() {
+      // Walls and floor
+      px(P.wall, 0, 0, 480, 120);
+      px(P.wallL, 0, 0, 480, 3);
+      for (let i = 0; i < 480; i += 12) px(P.wallD, i, 116, 6, 4);
+      px(P.floor, 0, 120, 480, 200);
+      for (let y = 120; y < 320; y += 12) {
+        for (let X = ((y - 120) / 12 % 2) * 12; X < 480; X += 24) {
+          px(P.floorD, X, y, 12, 12);
+        }
+      }
+
+      // Whiteboard (Clickable)
+      px(P.paper, 24, 20, 120, 68);
+      px(P.wallD, 22, 18, 124, 2);
+      px(P.wallD, 22, 88, 124, 2);
+      px(P.wallD, 22, 18, 2, 72);
+      px(P.wallD, 144, 18, 2, 72);
+      txt('PIPELINE', 30, 34, 10, P.syn);
+      px(P.ink, 30, 37, 52, 1);
+      txt('Click board for', 30, 52, 8, P.ink);
+      txt('active backlog', 30, 64, 8, P.ink);
+
+      // Window
+      px(P.wallD, 200, 16, 80, 60);
+      px('#8fd3ff', 203, 19, 74, 54);
+      px(P.wallD, 240, 19, 2, 54);
+      px(P.wallD, 203, 46, 74, 2);
+    }
+
+    function drawDesk(X, Y, w) {
+      px(P.deskD, X, Y + 16, w, 4);
+      px(P.desk, X, Y + 8, w, 8);
+      px(P.deskL, X, Y + 8, w, 2);
+      px(P.deskD, X + 4, Y + 20, 4, 18);
+      px(P.deskD, X + w - 8, Y + 20, 4, 18);
+    }
+
+    function drawMonitor(X, Y, on) {
+      px(P.monF, X, Y, 28, 22);
+      px(P.mon, X + 2, Y + 2, 24, 17);
+      px(P.monF, X + 11, Y + 22, 6, 3);
+      px(P.monF, X + 7, Y + 25, 14, 2);
+      if (on) {
+        px(P.monOn, X + 2, Y + 2, 24, 17);
+        for (let l = 0; l < 5; l++) {
+          px(P.monTxt, X + 4, Y + 5 + l * 3, ((frame + l * 4) % 16) + 4, 1.5);
+        }
+      }
+    }
+
+    function drawCouncilman(X, Y, col, colD, busy) {
+      const bob = busy ? (frame % 4 < 2 ? 0 : 1) : 0;
+      px(colD, X + 5, Y + 18 + bob, 16, 16);
+      px(col, X + 7, Y + 18 + bob, 12, 14);
+      px(P.skin, X + 8, Y + 4 + bob, 10, 12);
+      px(P.hair, X + 7, Y + 2 + bob, 12, 4);
+      px(P.ink, X + 10, Y + 9 + bob, 2, 2);
+      px(P.ink, X + 14, Y + 9 + bob, 2, 2);
+
+      if (busy) {
+        const a = frame % 2;
+        px(P.skin, X + 1, Y + 26 + a, 5, 3);
+        px(P.skin, X + 20, Y + 27 - a, 5, 3);
+      } else {
+        px(P.skin, X + 1, Y + 27, 5, 3);
+        px(P.skin, X + 20, Y + 27, 5, 3);
+        if (frame % 16 < 8) txt('z', X + 22, Y + 2, 8, P.z);
+      }
+    }
+
+    function drawPlate(name, line1, line2, X) {
+      px(P.ink, X, 258, 140, 56);
+      px(P.wallD, X, 258, 140, 2);
+      txt(name, X + 6, 274, 10, P.wallL);
+      txt(line1, X + 6, 290, 9, '#e8f5c8');
+      txt(line2, X + 6, 304, 9, '#c7dd9a');
+    }
+
+    function render() {
+      frame++;
+      drawRoom();
+
+      // Desk 1: Lead PM (Synapse)
+      const synBusy = state.synapse.state === 'busy';
+      drawDesk(30, 180, 80);
+      drawMonitor(56, 162, synBusy);
+      drawCouncilman(36, 158, P.syn, P.synD, synBusy);
+      drawPlate('LEAD PM (Synapse)', state.synapse.state.toUpperCase(), state.synapse.detail, 20);
+
+      // Desk 2: Chief Engineer (Claude)
+      const claBusy = state.claude.state === 'busy';
+      drawDesk(190, 180, 80);
+      drawMonitor(216, 162, claBusy);
+      drawCouncilman(196, 158, P.cla, P.claD, claBusy);
+      drawPlate('CHIEF ENGINEER', state.claude.state.toUpperCase(), state.claude.detail, 170);
+
+      // Desk 3: Chief Architect (Grok)
+      const grkBusy = state.grok.state === 'busy';
+      drawDesk(350, 180, 80);
+      drawMonitor(376, 162, grkBusy);
+      drawCouncilman(356, 158, P.grk, P.grkD, grkBusy);
+      drawPlate('CHIEF ARCHITECT', state.grok.state.toUpperCase(), state.grok.detail, 320);
+
+      requestAnimationFrame(render);
+    }
+
+    async function pollState() {
+      try {
+        const res = await fetch('/api/status');
+        if (res.ok) {
+          state = await res.json();
+          ticker.innerText = state.ticker?.text || 'Council operational.';
+        }
+      } catch (err) {}
+      setTimeout(pollState, 1500);
+    }
+
+    canvas.addEventListener('click', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const x = (e.clientX - rect.left) * scaleX;
+      const y = (e.clientY - rect.top) * scaleY;
+
+      if (x >= 22 && x <= 146 && y >= 18 && y <= 90) {
+        modal.style.display = 'flex';
+        renderModal();
+      }
+    });
+
+    closeBtn.addEventListener('click', () => modal.style.display = 'none');
+
+    function renderModal() {
+      const body = document.getElementById('modal-body');
+      const items = state.pipeline?.items || [];
+      if (items.length === 0) {
+        body.innerHTML = '<div>Backlog is currently empty. Use <code>councilmen backlog add "Feature name"</code> to queue tasks.</div>';
+        return;
+      }
+      body.innerHTML = items.map(item => `
+        <div class="backlog-row">
+          <span class="chip ${item.status}">${item.status}</span>
+          <strong>${item.id}</strong>
+          <span>${item.title}</span>
+        </div>
+      `).join('');
+    }
+
+    pollState();
+    render();
+  </script>
+</body>
+</html>
