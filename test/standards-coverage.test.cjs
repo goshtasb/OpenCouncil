@@ -77,3 +77,10 @@ test('N/A point lines are not counted as concerns, and a REQUIRED point still bl
   assert.equal(blocked.requiredConcerns, 1);
   assert.equal(lib.isSignedOff(blocked), false);
 });
+
+test('the zero-tool Architect seat is only claimed by providers verified to run without tools', () => {
+  const canDisable = { 'claude-code': true, 'grok-cli': true, ollama: true, antigravity: false, 'gemini-cli': false };
+  for (const [provider, expected] of Object.entries(canDisable)) {
+    assert.equal(lib.getAdapter(provider).canDisableTools, expected, `${provider} tool-disabling claim`);
+  }
+});

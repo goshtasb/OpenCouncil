@@ -3,6 +3,8 @@ import { AgentAdapter, AgentRunOptions, requireOutput, withPreamble } from './ba
 
 export class GeminiCliAdapter implements AgentAdapter {
   readonly name = 'gemini-cli';
+  // Plan mode restricts edits, not reads; there is no flag that removes the tool surface.
+  readonly canDisableTools = false;
 
   async isAvailable(): Promise<boolean> {
     try {

@@ -4,6 +4,9 @@ import { AgentAdapter, AgentRunOptions, requireOutput, withPreamble } from './ba
 // Google Antigravity CLI (`agy`), the successor client for Gemini subscriptions.
 export class AntigravityAdapter implements AgentAdapter {
   readonly name = 'antigravity';
+  // Verified otherwise: in plan mode without approvals `agy` still reads workspace files, so a seat
+  // that must have zero tools (the Chief Architect) cannot be enforced on this provider.
+  readonly canDisableTools = false;
 
   async isAvailable(): Promise<boolean> {
     try {

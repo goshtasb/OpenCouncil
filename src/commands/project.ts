@@ -50,6 +50,9 @@ export function registerProjectCommands(program: Command, { repoRoot, config }: 
             if (!/pong/i.test(reply)) throw new Error(`unexpected reply: ${reply.trim().slice(0, 200)}`);
           }
           logger.success(`${label}: OK`);
+        if (seat === 'chief_architect' && adapter.canDisableTools === false) {
+          logger.warn(`${label}: this provider cannot be run without tools, so the Chief Architect would have repository access. The arbiter is meant to rule only on the text it is given — prefer claude-code, grok-cli or ollama for this seat.`);
+        }
         } catch (err: any) {
           failures++;
           const detail = [err.shortMessage || err.message, err.stderr, err.stdout].filter(Boolean).join('\n').trim();

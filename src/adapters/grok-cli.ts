@@ -6,6 +6,8 @@ import { AgentAdapter, AgentRunOptions, requireOutput } from './base.js';
 
 export class GrokCliAdapter implements AgentAdapter {
   readonly name = 'grok-cli';
+  // `--tools none --deny '*'` verified: reads are blocked. (`--tools ''` alone does NOT disable them.)
+  readonly canDisableTools = true;
 
   private findBinary(): string {
     const custom = process.env.GROK_BIN;

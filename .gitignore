@@ -10,3 +10,6 @@ dist/
 !.councilmen/config.yml
 !.councilmen/CONSTITUTION.md
 !.councilmen/DELEGATION.md
+
+# Operator review copies of PRDs (generated, not source)
+/PRD-*.pdf

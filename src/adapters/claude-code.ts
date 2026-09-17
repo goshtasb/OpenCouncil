@@ -9,6 +9,8 @@ const PERMISSION_MODES: Record<NonNullable<AgentRunOptions['permissionMode']>, s
 
 export class ClaudeCodeAdapter implements AgentAdapter {
   readonly name = 'claude-code';
+  // `--tools ''` verified: the model reports it has no file access.
+  readonly canDisableTools = true;
 
   async isAvailable(): Promise<boolean> {
     try {

@@ -17,6 +17,12 @@ export interface AgentAdapter {
   readonly name: string;
   isAvailable(): Promise<boolean>;
   runPrompt(prompt: string, options: AgentRunOptions): Promise<string>;
+  /**
+   * Whether the CLI can actually run with no tools at all. The Chief Architect must judge only the
+   * text placed before it, so a provider that cannot be stripped of tools is unfit for that seat.
+   * Verified per provider against the installed CLI, not assumed.
+   */
+  readonly canDisableTools?: boolean;
 }
 
 // For CLIs without a system-prompt flag, the persona and contract are sent as a prompt preamble.

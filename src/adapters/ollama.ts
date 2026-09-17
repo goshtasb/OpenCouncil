@@ -3,6 +3,8 @@ import { AgentAdapter, AgentRunOptions, requireOutput } from './base.js';
 
 export class OllamaAdapter implements AgentAdapter {
   readonly name = 'ollama';
+  // Plain model execution: no tool surface at all.
+  readonly canDisableTools = true;
 
   async isAvailable(): Promise<boolean> {
     try {
