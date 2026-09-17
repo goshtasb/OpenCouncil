@@ -14,5 +14,5 @@ The Operator is shown a PRD only after the Chief Engineer, the Chief Architect a
 Once a PRD is approved:
 1. **Autonomous Implementation**: The Chief Engineer runs headlessly, with full tool permissions, in an isolated clone on a dedicated branch, writing code, tests, and commits.
 2. **Blockers**: A `BLOCKED.md` question is ruled on by the Chief Architect within the approved scope, and the Chief Engineer is resumed.
-3. **Harness Verification**: The harness checks for commits and a clean tree and re-runs the configured lint and test commands. Failures are fed back to the Chief Engineer. Both loops are bounded by `execution_attempts`.
+3. **Harness Verification**: The harness checks for commits and a clean tree, then runs every configured verification gate (lint, tests, dependency audit, secret scan, static analysis, accessibility, performance — whatever the project declares). Required gates must pass; advisory gates are recorded. Results are written to the session as immutable evidence and summarized in the pull request. Failures are fed back to the Chief Engineer, bounded by `execution_attempts`.
 4. **Pull Request**: Only after verification passes does the harness push the branch and open a Pull Request (and, if configured, enable GitHub auto-merge). If attempts are exhausted or publishing fails, the session is marked BLOCKED and the backlog item parked.

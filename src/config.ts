@@ -67,6 +67,12 @@ export function loadConfig(startDir: string = process.cwd()): CouncilConfig {
   try {
     const content = fs.readFileSync(configFile, 'utf8');
     const parsed = (yaml.load(content) || {}) as Partial<CouncilConfig>;
+    if (typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('the file must contain a YAML mapping');
+    }
+    if (parsed.verification?.gates !== undefined && !Array.isArray(parsed.verification.gates)) {
+      throw new Error('verification.gates must be a list');
+    }
     const seats = parsed.seats || ({} as Partial<CouncilConfig['seats']>);
     return {
       ...DEFAULT_CONFIG,
@@ -81,9 +87,9 @@ export function loadConfig(startDir: string = process.cwd()): CouncilConfig {
       backlog: { ...DEFAULT_CONFIG.backlog, ...parsed.backlog },
       office: { ...DEFAULT_CONFIG.office, ...parsed.office }
     };
-  } catch (err) {
-    console.warn(`Failed to parse ${configFile}, using default configuration.`);
-    return DEFAULT_CONFIG;
+  } catch (err: any) {
+    // Never silently fall back: a malformed config would drop the project's verification gates.
+    throw new Error(`Failed to load ${configFile}: ${err.message}`);
   }
 }
 

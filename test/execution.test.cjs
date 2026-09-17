@@ -44,7 +44,7 @@ test('execution: failing tests are BLOCKED, never reported as DONE', async () =>
   await execution.handoff(sid);
   ctx.adapters.eng.responses.push(commitAndFinish);
   assert.equal(await execution.run(sid), 'BLOCKED');
-  assert.match(ctx.sessions.getStatus(sid).details.blockedReason, /test command failed/);
+  assert.match(ctx.sessions.getStatus(sid).details.blockedReason, /required verification gate\(s\) failed: test/);
   assert.equal(ctx.pipeline.getItem(item.id).status, 'parked');
 });
 
@@ -75,7 +75,7 @@ test('execution: files created by the install step do not block; --skip-agent re
   await execution.handoff(sid);
   ctx.adapters.eng.responses.push(commitAndFinish);
   assert.equal(await execution.run(sid), 'BLOCKED');
-  assert.match(ctx.sessions.getStatus(sid).details.blockedReason, /test command failed/, 'install artifact was not treated as uncommitted work');
+  assert.match(ctx.sessions.getStatus(sid).details.blockedReason, /gate\(s\) failed: test/, 'install artifact was not treated as uncommitted work');
 
   ctx.config.project.test_command = 'true';
   const callsBefore = ctx.adapters.eng.calls.length;

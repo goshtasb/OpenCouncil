@@ -42,7 +42,8 @@ Single-agent AI coders hallucinate, accept ambiguous requirements, make silent b
 * **12-Point Industry Standards Review**: Every specification is audited against named current practice — SOC 2/ISO 27001 change management, OWASP ASVS + NIST SSDF secure development, SLSA/SBOM supply chain, test-pyramid and release engineering, GDPR/DPIA data governance, ISO 42010 ADRs and ISO 29148 requirement quality, SRE SLOs with OpenTelemetry, progressive delivery and expand-contract migrations, WCAG 2.2 AA and ICU i18n, SemVer/OpenAPI/RFC 9457 contracts, p95 and cost budgets, and OWASP LLM Top 10 for AI components.
 * **Engineering Standards**: `.councilmen/standards/` — 00 Manifest, 01 Architecture, 02 Coding Practices, 03 Documentation — is given to every seat; seats cite rules by number, name and section.
 * **Subscription-First (Zero API Token Burn)**: Drives the CLIs you already pay for (Claude Code, Grok, Antigravity/Gemini) or local Ollama.
-* **Verified Hands-Off Execution**: The Chief Engineer commits on `council/<slug>` in an isolated clone. Blockers go to the Chief Architect and failed checks go back to the Chief Engineer (bounded by `execution_attempts`). The harness then checks for commits and a clean tree, re-runs your lint/test commands, pushes, opens the PR, and (optionally) enables GitHub auto-merge. Anything that still fails is reported as `BLOCKED` — never as done.
+* **Verified Hands-Off Execution**: The Chief Engineer commits on `council/<slug>` in an isolated clone. Blockers go to the Chief Architect and failed checks go back to the Chief Engineer (bounded by `execution_attempts`). The harness then checks for commits and a clean tree and runs your **verification gates**, pushes, opens the PR, and (optionally) enables GitHub auto-merge. Anything that still fails is reported as `BLOCKED` — never as done.
+* **Machine-Enforced Gates**: `verification.gates` in `.councilmen/config.yml` is an ordered list of commands — lint, typecheck, tests, `npm audit`, license check, CycloneDX SBOM, gitleaks, semgrep, axe, performance budgets — each with a timeout, a `required` flag (advisory gates are recorded but do not block) and the standard it enforces. Every run writes an immutable evidence record to the session and a gate summary into the pull request body, so the standards are checked by commands rather than trusted to a model.
 * **Retro Pixel-Art Office**: A local (127.0.0.1) dashboard showing which seat is working and the backlog.
 
 ---
@@ -121,7 +122,21 @@ councilmen deliberate $SESSION
 ```
 `deliberate` runs the whole loop: Lead drafts → Engineer rounds → Architect rulings on questions → tie-breaks → Architect sign-off (zero concerns) → Lead sign-off → finalize. It is resumable. Individual steps are also available: `draft`, `ask`, `tiebreak`, `review`, `signoff`, `finalize`, `status`.
 
-### 4. Approve and execute
+### 4. Configure verification gates (optional but recommended)
+
+```yaml
+verification:
+  gates:
+    - name: "test"
+      command: "npm test"
+      standard: "12-point #4 Testing & Release Engineering"
+    - name: "dependency-audit"
+      command: "npm audit --audit-level=high"
+      standard: "12-point #3 Software Supply Chain"
+```
+Defining `gates` replaces the implicit `lint_command`/`test_command` pair, so list those too. `councilmen init` writes a commented catalogue of gate examples.
+
+### 5. Approve and execute
 
 ```bash
 councilmen approve $SESSION "APPROVE 8a3f1b9c"   # token printed after finalization
@@ -153,7 +168,7 @@ flowchart TD
     Gate -->|yes| Operator[Operator: APPROVE sha8]
     Operator --> Exec[Chief Engineer: implement and commit in isolated clone]
     Exec -->|BLOCKED.md question| Rule2[Chief Architect ruling] --> Exec
-    Exec --> Verify[Harness: commits, clean tree, lint, tests]
+    Exec --> Verify[Harness: commits, clean tree, verification gates]
     Verify -->|fail, attempts left| Exec
     Verify -->|pass| PR[Push, pull request, optional auto-merge]
     Verify -->|attempts exhausted| Blocked[BLOCKED, item parked]

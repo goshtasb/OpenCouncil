@@ -11,6 +11,7 @@ import { buildSystemPrompt } from '../utils/prompts.js';
 import { getAdapter } from '../adapters/registry.js';
 import { PublishResult, publishBranch } from './publish.js';
 import { verifyExecution } from './verification.js';
+import { resolveGates, summarizeGates } from './gates.js';
 import { ArchitectQuestionEngine, extractArchitectQuestions, formatArchitectRulings } from './questions.js';
 import { logger } from '../utils/logger.js';
 
@@ -102,13 +103,18 @@ export class ExecutionEngine {
     }
     const doneFile = path.join(cwd, 'DONE.md');
     const blockedFile = path.join(cwd, 'BLOCKED.md');
-    const verify = () => verifyExecution({
-      cwd,
-      baseSha: meta.baseSha,
-      installArtifacts: status.details.installArtifacts || [],
-      lintCommand: this.config.project.lint_command,
-      testCommand: this.config.project.test_command
-    });
+    const gates = resolveGates(this.config);
+    const verify = async () => {
+      const result = await verifyExecution({
+        cwd,
+        baseSha: meta.baseSha,
+        installArtifacts: status.details.installArtifacts || [],
+        gates,
+        failFast: this.config.verification?.fail_fast
+      });
+      this.recordVerification(sessionId, result);
+      return result;
+    };
 
     if (options.skipAgent) {
       if (!fs.existsSync(doneFile)) return this.block(sessionId, meta.backlogItem, 'No DONE.md in the execution checkout.');
@@ -190,9 +196,34 @@ export class ExecutionEngine {
     }
   }
 
+  /** Immutable evidence of what the harness checked, kept with the session (SOC 2 CC8.1 audit trail). */
+  private recordVerification(sessionId: string, result: Awaited<ReturnType<typeof verifyExecution>>): void {
+    const dir = path.join(this.sessionManager.getSessionPath(sessionId), 'verification');
+    fs.mkdirSync(dir, { recursive: true });
+    const record = {
+      verifiedAt: new Date().toISOString(),
+      headSha: result.headSha,
+      passed: result.ok,
+      reason: result.ok ? undefined : result.reason,
+      gates: result.gates
+    };
+    fs.writeFileSync(path.join(dir, `report-${Date.now()}.json`), JSON.stringify(record, null, 2), 'utf8');
+    fs.writeFileSync(path.join(dir, 'latest.json'), JSON.stringify(record, null, 2), 'utf8');
+    this.sessionManager.setStatus(sessionId, this.sessionManager.getStatus(sessionId).status, {
+      // Gate output is deliberately left in the session evidence file, never in status (it can be large and noisy).
+      verification: {
+        passed: result.ok,
+        headSha: result.headSha,
+        gates: result.gates.map(({ output, ...summary }) => summary)
+      }
+    });
+    this.sessionManager.logEvent(sessionId, `Verification ${result.ok ? 'passed' : 'failed'} at ${result.headSha}: ${result.gates.map(g => `${g.name}=${g.passed ? 'pass' : 'fail'}`).join(', ') || 'no gates'}`);
+  }
+
   private async publish(sessionId: string): Promise<ExecutionOutcome> {
     const meta = this.sessionManager.loadMeta(sessionId);
     const status = this.sessionManager.getStatus(sessionId);
+    const gateSummary = summarizeGates(status.details.verification?.gates || []);
     let published: PublishResult;
     try {
       published = await publishBranch({
@@ -200,7 +231,15 @@ export class ExecutionEngine {
         branch: status.details.execBranch || `council/${meta.slug}`,
         baseBranch: this.config.project.base_branch,
         title: `[Council] ${meta.slug}`,
-        body: `Automated PR generated from Open Councilmen session ${sessionId}.\n\nApproved PRD sha256: ${status.details.prdSha256}`,
+        body: [
+          `Automated PR generated from Open Councilmen session ${sessionId}.`,
+          '',
+          `Approved PRD sha256: ${status.details.prdSha256}`,
+          `Signed off by: ${(status.details.signedOffBy || []).join(', ') || 'n/a'}`,
+          '',
+          '## Harness verification',
+          gateSummary
+        ].join('\n'),
         autoMerge: this.config.backlog.auto_merge_dev
       });
     } catch (err: any) {

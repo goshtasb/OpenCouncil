@@ -117,6 +117,34 @@ export interface CouncilConfig {
     port: number;
     auto_open: boolean;
   };
+  verification?: {
+    gates?: VerificationGate[];
+    /** Stop at the first failed required gate instead of collecting every failure. Defaults to false. */
+    fail_fast?: boolean;
+  };
+}
+
+export interface VerificationGate {
+  /** Unique, stable name; appears in the evidence report and the pull request body. */
+  name: string;
+  command: string;
+  /** false makes the gate advisory: it is recorded but does not block the pull request. Defaults to true. */
+  required?: boolean;
+  timeout_seconds?: number;
+  /** The standard or checklist point this gate enforces, for the audit trail. */
+  standard?: string;
+}
+
+export interface GateResult {
+  name: string;
+  command: string;
+  required: boolean;
+  standard?: string;
+  exitCode: number | null;
+  passed: boolean;
+  durationMs: number;
+  timedOut?: boolean;
+  output: string;
 }
 
 export interface SeatConfig {

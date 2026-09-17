@@ -95,5 +95,5 @@ test('execution: failed verification is fed back to the Chief Engineer, who fixe
   assert.equal(await execution.run(sid), 'BLOCKED');
   assert.match(ctx.sessions.getStatus(sid).details.blockedReason, /Push or pull request creation failed/, 'verification passed on attempt 2');
   const calls = ctx.adapters.eng.calls;
-  assert.match(calls[calls.length - 1].prompt, /Harness verification of your DONE.md failed[\s\S]*test command failed/);
+  assert.match(calls[calls.length - 1].prompt, /Harness verification of your DONE.md failed[\s\S]*Gate 'test' failed/);
 });

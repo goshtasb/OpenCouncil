@@ -12,6 +12,7 @@ export * from './engine/pipeline.js';
 export * from './engine/execution.js';
 export * from './engine/publish.js';
 export * from './engine/verification.js';
+export * from './engine/gates.js';
 export * from './engine/questions.js';
 export * from './adapters/base.js';
 export * from './adapters/registry.js';
