@@ -158,3 +158,68 @@ test('status details merge across transitions and legacy flat STATUS.json is rea
   assert.equal(ctx.sessions.getStatus(sid).details.prdSha256, 'legacy');
   assert.throws(() => ctx.sessions.getSessionPath('../escape'), /Invalid session id/);
 });
+
+test('converging on the final round still gets sign-off revision rounds instead of an automatic stall', async () => {
+  const ctx = setup({
+    pm: [PLAN(1), revision(2), revision(3), LEAD_OK],
+    eng: [OBJECT, SHIP, SHIP],
+    arch: ['CONCERN 1: REQUIRED — Single Source of Truth — bind the footer to the real value\nVERDICT: RETHINK', SIGNOFF],
+    council: { max_rounds: 2, tiebreak_round: 9, signoff_revisions: 2 }
+  });
+  const { council, deliberation } = engines(ctx);
+  const sid = await council.open(ctx.repo, 'signoff-budget', { task: 'x' });
+  const result = await deliberation.run(sid);
+  assert.equal(result.outcome, 'AWAITING_APPROVAL', 'the review concern was answerable past max_rounds');
+  assert.equal(result.rounds, 3);
+  assert.match(ctx.adapters.pm.calls[2].prompt, /bind the footer to the real value/);
+});
+
+test('the sign-off budget is finite: a council that keeps failing review still stalls', async () => {
+  const rethink = 'CONCERN 1: REQUIRED — x — y\nVERDICT: RETHINK';
+  const ctx = setup({
+    pm: [PLAN(1), revision(2), revision(3)],
+    eng: [SHIP, SHIP, SHIP],
+    arch: [rethink, rethink, rethink],
+    council: { max_rounds: 1, tiebreak_round: 9, signoff_revisions: 2 }
+  });
+  const { council, deliberation } = engines(ctx);
+  const sid = await council.open(ctx.repo, 'budget-exhausted', { task: 'x' });
+  const result = await deliberation.run(sid);
+  assert.equal(result.outcome, 'STALLED');
+  assert.equal(result.rounds, 3, 'max_rounds 1 + 2 sign-off revisions');
+  assert.match(result.reason, /sign-off revisions 2/);
+});
+
+test('the signed-off PRD is always produced as a PDF for Operator approval', async () => {
+  const ctx = setup({ pm: [PLAN(1), LEAD_OK], eng: [SHIP], arch: [SIGNOFF] });
+  const { council, deliberation } = engines(ctx);
+  const sid = await council.open(ctx.repo, 'pdf-approval', { task: 'x' });
+  const result = await deliberation.run(sid);
+
+  assert.equal(result.deliverablePdf, path.join(ctx.sessions.getSessionPath(sid), 'brief-and-prd.pdf'));
+  const pdf = fs.readFileSync(result.deliverablePdf);
+  assert.equal(pdf.subarray(0, 5).toString(), '%PDF-', 'a real PDF, not markdown with a .pdf name');
+  assert.ok(pdf.length > 1500, `pdf too small: ${pdf.length} bytes`);
+  // The approval facts a printed copy must carry.
+  const text = pdf.toString('latin1');
+  assert.ok(text.includes('/Title'), 'document metadata present');
+  assert.ok(text.includes(ctx.sessions.getStatus(sid).details.prdSha256.slice(0, 12)), 'hash travels with the document');
+
+  const regenerated = await council.writeDeliverablePdf(sid);
+  assert.equal(regenerated, result.deliverablePdf);
+  assert.equal(fs.readFileSync(regenerated).subarray(0, 5).toString(), '%PDF-');
+});
+
+test('markdown structures in a PRD render without throwing', async () => {
+  const dir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'councilmen-pdf-'));
+  const out = path.join(dir, 'doc.pdf');
+  const markdown = [
+    '# Product Brief', '## Table', '| a | b |', '| --- | --- |', '| 1 | 2 |',
+    '## List', '- one', '  - nested', '1. first', '> a quote', '---',
+    '## Code', '```ts', 'const x: number = 1;', '```',
+    '# PRD', 'Text with **bold**, *italic*, `code` and a [link](https://example.com).',
+    '# Executive Summary', 'Done.'
+  ].join('\n');
+  await lib.renderMarkdownToPdf(markdown, out, { title: 'T', session: 's1', prdSha256: 'a'.repeat(64), approvalToken: 'APPROVE aaaaaaaa' });
+  assert.equal(fs.readFileSync(out).subarray(0, 5).toString(), '%PDF-');
+});

@@ -15,7 +15,7 @@ import { buildSystemPrompt } from '../utils/prompts.js';
 import { logger } from '../utils/logger.js';
 
 export type DeliberationOutcome =
-  | { outcome: 'AWAITING_APPROVAL'; rounds: number; deliverable: string; approvalToken: string }
+  | { outcome: 'AWAITING_APPROVAL'; rounds: number; deliverable: string; deliverablePdf: string; approvalToken: string }
   | { outcome: 'STALLED'; rounds: number; reason: string };
 
 /**
@@ -58,6 +58,11 @@ export class DeliberationEngine {
     const meta = this.sessionManager.loadMeta(sessionId);
     const sessionDir = this.sessionManager.getSessionPath(sessionId);
 
+    // A document that the Chief Engineer has ratified must be allowed to answer sign-off concerns,
+    // even if convergence happened on the last ordinary round.
+    const signoffBudget = meta.signoffRevisions ?? this.config.council.signoff_revisions;
+    let roundLimit = meta.maxRounds;
+
     while (true) {
       const roundsDone = this.sessionManager.getRoundsDone(sessionId);
 
@@ -77,19 +82,26 @@ export class DeliberationEngine {
             logger.council('LEAD PM', `Sign-off on v${roundsDone}: ${lead.verdict}`);
             await this.routeQuestions(sessionId, 'lead_pm', `sign-off on v${roundsDone}`, path.join(sessionDir, roundDirName('signoff', roundsDone), 'reply.md'));
           }
+          if (roundsDone >= roundLimit && signoffBudget > 0) {
+            // Convergence was reached; spend the sign-off budget on resolving the concerns raised above.
+            roundLimit = meta.maxRounds + signoffBudget;
+            logger.council('HARNESS', `Granting ${signoffBudget} sign-off revision round(s) (limit now ${roundLimit}).`);
+          }
           if (checkAllSignoffs(this.sessionManager, sessionId).ok) {
             const deliverable = this.council.finalize(sessionId);
+            const deliverablePdf = await this.council.writeDeliverablePdf(sessionId);
             const prdSha = this.sessionManager.getStatus(sessionId).details.prdSha256;
-            return { outcome: 'AWAITING_APPROVAL', rounds: roundsDone, deliverable, approvalToken: approvalToken(prdSha) };
+            logger.council('OPERATOR', `PRD for approval (PDF): ${deliverablePdf}`);
+            return { outcome: 'AWAITING_APPROVAL', rounds: roundsDone, deliverable, deliverablePdf, approvalToken: approvalToken(prdSha) };
           }
-        } else if (roundsDone >= meta.tiebreakRound && roundsDone < meta.maxRounds && !fs.existsSync(path.join(sessionDir, roundDirName('tiebreak', roundsDone), 'rulings.json'))) {
+        } else if (roundsDone >= meta.tiebreakRound && roundsDone < roundLimit && !fs.existsSync(path.join(sessionDir, roundDirName('tiebreak', roundsDone), 'rulings.json'))) {
           await this.tiebreak.runTieBreak(sessionId);
         }
       }
 
       const nextRound = roundsDone + 1;
-      if (nextRound > meta.maxRounds) {
-        const reason = `No unanimous zero-concern sign-off after ${roundsDone} rounds (max_rounds ${meta.maxRounds}); nothing was presented to the Operator.`;
+      if (nextRound > roundLimit) {
+        const reason = `No unanimous zero-concern sign-off after ${roundsDone} rounds (max_rounds ${meta.maxRounds}, sign-off revisions ${signoffBudget}); nothing was presented to the Operator.`;
         this.sessionManager.setStatus(sessionId, 'STALLED', { reason });
         syncBacklogItem(this.pipeline, meta.backlogItem, 'parked', sessionId);
         logger.council('HARNESS', `Council stalled: ${reason}`);

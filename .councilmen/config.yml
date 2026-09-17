@@ -3,21 +3,20 @@ version: 1
 
 # Project Settings
 project:
-  name: "My Project"
+  name: "Open Councilmen"
   base_branch: "main"               # Branch the pull request targets (e.g. main, dev)
   package_manager: "npm"            # Informational: npm, pnpm, yarn, poetry, cargo, go
-  install_command: "npm install"    # Run (via shell) in the execution clone before the Chief Engineer starts
+  install_command: "npm ci"    # Run (via shell) in the execution clone before the Chief Engineer starts
   test_command: "npm test"          # Default test gate (see `verification` to add more gates)
   lint_command: ""                  # Optional default lint gate (e.g. "npm run lint")
 
 # Council Configuration
 council:
-  max_rounds: 10                    # Rounds before the session stops as STALLED (never presented to the Operator)
-  tiebreak_round: 7                 # From this round on, every non-converged round is arbitrated
+  max_rounds: 6                     # Rounds before the session stops as STALLED (never presented to the Operator)
+  tiebreak_round: 4                 # From this round on, every non-converged round is arbitrated
   round_timeout_seconds: 900        # Per-call timeout for deliberation, tie-break and review (15 mins)
   execution_timeout_seconds: 3600   # Timeout per autonomous execution run (1 hour)
   execution_attempts: 3             # Chief Engineer runs per execution (resumes after Architect rulings or failed verification)
-  signoff_revisions: 2              # Extra rounds granted to answer sign-off concerns once the Engineer has ratified
 
 # Council Seats & Model Providers
 # Providers: claude-code, grok-cli, antigravity (agy), gemini-cli, ollama
@@ -45,7 +44,14 @@ seats:
 # so include your lint and test commands explicitly. Gates make the standards machine-enforced rather
 # than advisory — add the ones your stack supports:
 verification:
-  fail_fast: false                  # false: run every gate and report all failures to the Chief Engineer
+  fail_fast: false
+  gates:
+    - name: "build"
+      command: "npm run build"
+      standard: "02 Coding Practices"
+    - name: "test"
+      command: "npm test"
+      standard: "12-point #4 Testing & Release Engineering"                  # false: run every gate and report all failures to the Chief Engineer
   # gates:
   #   - name: "lint"
   #     command: "npm run lint"
@@ -83,9 +89,9 @@ verification:
 # Backlog & Autonomous Execution
 backlog:
   wip_limit: 1                      # Max backlog items in council/approval/execution at once
-  auto_merge_dev: true              # Enable GitHub auto-merge (squash) on the PR; GitHub merges once required checks pass
+  auto_merge_dev: false              # Enable GitHub auto-merge (squash) on the PR; GitHub merges once required checks pass
 
 # Office Web Dashboard
 office:
   port: 4321
-  auto_open: true                   # Open the dashboard in the browser when `councilmen office` starts
+  auto_open: false                   # Open the dashboard in the browser when `councilmen office` starts

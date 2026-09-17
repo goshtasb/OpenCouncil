@@ -18,4 +18,5 @@ export * from './adapters/base.js';
 export * from './adapters/registry.js';
 export * from './utils/paths.js';
 export * from './utils/prompts.js';
+export * from './utils/pdf.js';
 export * from './office/server.js';

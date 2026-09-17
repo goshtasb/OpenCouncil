@@ -18,7 +18,8 @@ export const DEFAULT_CONFIG: CouncilConfig = {
     tiebreak_round: 7,
     round_timeout_seconds: 900,
     execution_timeout_seconds: 3600,
-    execution_attempts: 3
+    execution_attempts: 3,
+    signoff_revisions: 2
   },
   seats: {
     lead_pm: {

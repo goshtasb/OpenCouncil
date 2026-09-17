@@ -28,7 +28,9 @@ export function registerCouncilCommands(program: Command, { repoRoot, config }: 
       if (result.outcome === 'AWAITING_APPROVAL') {
         console.log(`\nAgreed and signed off after ${result.rounds} round(s).`);
         console.log(`Deliverable: ${result.deliverable}`);
-        console.log(`Read it, then approve with: councilmen approve ${sessionId} "${result.approvalToken}"`);
+        console.log(`PDF for approval: ${result.deliverablePdf}`);
+        console.log(`Review it:  councilmen prd ${sessionId}`);
+        console.log(`Approve it: councilmen approve ${sessionId} "${result.approvalToken}"`);
       } else {
         console.log(`\nSTALLED after ${result.rounds} round(s): ${result.reason}`);
         process.exitCode = 2;
@@ -94,6 +96,30 @@ export function registerCouncilCommands(program: Command, { repoRoot, config }: 
     .action(action((sessionId: string) => {
       const file = new CouncilEngine(config).finalize(sessionId);
       console.log(`Finalized deliverable: ${file}`);
+    }));
+
+  program
+    .command('prd <session>')
+    .description('Present the final PRD the council signed off, for Operator review before approval')
+    .option('--path-only', 'Print only the file path')
+    .option('--pdf', 'Regenerate and print the path of the approval PDF')
+    .action(action(async (sessionId: string, options: { pathOnly?: boolean; pdf?: boolean }) => {
+      const council = new CouncilEngine(config);
+      const prd = council.deliverable(sessionId);
+      if (options.pdf) {
+        console.log(await council.writeDeliverablePdf(sessionId));
+        return;
+      }
+      if (options.pathOnly) {
+        console.log(prd.file);
+        return;
+      }
+      console.log(prd.content);
+      console.log(`\n--- Operator review ---`);
+      console.log(`File: ${prd.file}`);
+      console.log(`sha256: ${prd.prdSha256}`);
+      console.log(`PDF: ${prd.file.replace(/\.md$/, '.pdf')} (regenerate with: councilmen prd ${sessionId} --pdf)`);
+      console.log(`No code is written until you approve: councilmen approve ${sessionId} "${prd.approvalToken}"`);
     }));
 
   program

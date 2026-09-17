@@ -97,3 +97,33 @@ test('execution: failed verification is fed back to the Chief Engineer, who fixe
   const calls = ctx.adapters.eng.calls;
   assert.match(calls[calls.length - 1].prompt, /Harness verification of your DONE.md failed[\s\S]*Gate 'test' failed/);
 });
+
+test('no code is written without the Operator approving the final PRD', async () => {
+  const ctx = setup({ pm: [PLAN(1), LEAD_OK], eng: [SHIP], arch: [SIGNOFF] });
+  const { council, deliberation, execution } = engines(ctx);
+  const sid = await council.open(ctx.repo, 'approval-gate', { task: 'x' });
+
+  // Before the council has signed anything off: no PRD to read and no execution.
+  assert.throws(() => council.deliverable(sid), /has no finalized PRD/);
+  await assert.rejects(execution.handoff(sid), /must be APPROVED first/);
+  await assert.rejects(execution.run(sid), /Cannot run session in status 'OPEN'/);
+
+  const result = await deliberation.run(sid);
+  assert.equal(result.outcome, 'AWAITING_APPROVAL');
+
+  // The Operator can now read the exact document, but execution is still locked.
+  const prd = council.deliverable(sid);
+  assert.equal(prd.content, PLAN(1));
+  assert.equal(prd.approvalToken, result.approvalToken);
+  assert.equal(prd.prdSha256, ctx.sessions.getStatus(sid).details.prdSha256);
+  await assert.rejects(execution.handoff(sid), /Cannot handoff session in status 'AWAITING_APPROVAL'/);
+  await assert.rejects(execution.run(sid), /Cannot run session in status 'AWAITING_APPROVAL'/);
+  assert.equal(ctx.adapters.eng.calls.filter(c => c.options.permissionMode !== 'plan').length, 0, 'every pre-approval Chief Engineer call was read-only');
+
+  // Only the typed token for this exact document unlocks execution.
+  assert.throws(() => council.approve(sid, 'APPROVE 00000000'), /Invalid approval token/);
+  await assert.rejects(execution.handoff(sid), /must be APPROVED first/);
+  council.approve(sid, prd.approvalToken);
+  assert.equal(ctx.sessions.getStatus(sid).status, 'APPROVED');
+  assert.match(await execution.handoff(sid), /exec/);
+});

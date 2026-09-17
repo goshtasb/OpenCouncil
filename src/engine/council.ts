@@ -10,6 +10,7 @@ import { buildSystemPrompt } from '../utils/prompts.js';
 import { getAdapter } from '../adapters/registry.js';
 import { logger } from '../utils/logger.js';
 import { checkAllSignoffs } from './signoff.js';
+import { renderMarkdownToPdf } from '../utils/pdf.js';
 import { approvalToken, hasHeading, parseEngineerReply } from './verdicts.js';
 
 export interface OpenSessionOptions {
@@ -62,6 +63,7 @@ export class CouncilEngine {
       baseRef: baseBranch,
       baseSha,
       maxRounds: this.config.council.max_rounds,
+      signoffRevisions: this.config.council.signoff_revisions,
       tiebreakRound: this.config.council.tiebreak_round,
       createdAt: new Date().toISOString(),
       parentSession: options.parent,
@@ -100,8 +102,9 @@ export class CouncilEngine {
     const meta = this.sessionManager.loadMeta(sessionId);
     const roundsDone = this.sessionManager.getRoundsDone(sessionId);
     const roundNum = roundsDone + 1;
-    if (roundNum > meta.maxRounds) {
-      throw new Error(`Session ${sessionId} already used all ${meta.maxRounds} rounds. The session is stalled.`);
+    const hardLimit = meta.maxRounds + (meta.signoffRevisions ?? this.config.council.signoff_revisions);
+    if (roundNum > hardLimit) {
+      throw new Error(`Session ${sessionId} already used all ${hardLimit} rounds. The session is stalled.`);
     }
     const sessionDir = this.sessionManager.getSessionPath(sessionId);
     const planFile = path.join(sessionDir, `plan-v${roundNum}.md`);
@@ -140,6 +143,20 @@ export class CouncilEngine {
     return verdict;
   }
 
+  /** Writes the approval PDF beside the Markdown deliverable. The Operator always reviews the PDF. */
+  async writeDeliverablePdf(sessionId: string): Promise<string> {
+    const prd = this.deliverable(sessionId);
+    const meta = this.sessionManager.loadMeta(sessionId);
+    const status = this.sessionManager.getStatus(sessionId);
+    return renderMarkdownToPdf(prd.content, prd.file.replace(/\.md$/, '.pdf'), {
+      title: `Product Brief & PRD — ${meta.slug}`,
+      session: sessionId,
+      prdSha256: prd.prdSha256,
+      approvalToken: prd.approvalToken,
+      signedOffBy: status.details.signedOffBy
+    });
+  }
+
   finalize(sessionId: string): string {
     this.requireStatus(sessionId, ['OPEN'], 'finalize');
     // The Operator is only ever presented a document every seat has signed off, byte for byte.
@@ -175,8 +192,21 @@ export class CouncilEngine {
     syncBacklogItem(this.pipeline, meta.backlogItem, 'awaiting-approval', sessionId);
 
     logger.council('HARNESS', `Deliverable finalized: ${deliverableFile}`);
-    logger.council('OPERATOR', `Read the deliverable, then authorize with: councilmen approve ${sessionId} "${approvalToken(hash)}"`);
+    logger.council('OPERATOR', `Review it with: councilmen prd ${sessionId} (PDF alongside the deliverable)`);
+    logger.council('OPERATOR', `Then authorize with: councilmen approve ${sessionId} "${approvalToken(hash)}"`);
     return deliverableFile;
+  }
+
+  /** The exact document the Operator is asked to approve. Only available once every seat has signed off. */
+  deliverable(sessionId: string): { file: string; content: string; prdSha256: string; approvalToken: string } {
+    const status = this.sessionManager.getStatus(sessionId);
+    if (!['AWAITING_APPROVAL', 'APPROVED', 'IN_EXECUTION', 'DONE', 'BLOCKED'].includes(status.status)) {
+      throw new Error(`Session ${sessionId} has no finalized PRD (status '${status.status}'). The council has not signed one off yet.`);
+    }
+    const file = path.join(this.sessionManager.getSessionPath(sessionId), 'brief-and-prd.md');
+    if (!fs.existsSync(file)) throw new Error(`No deliverable found for session ${sessionId}.`);
+    const prdSha256 = sha256File(file);
+    return { file, content: fs.readFileSync(file, 'utf8'), prdSha256, approvalToken: approvalToken(prdSha256) };
   }
 
   approve(sessionId: string, token: string): void {

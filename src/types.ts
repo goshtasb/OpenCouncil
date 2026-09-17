@@ -80,6 +80,7 @@ export interface CouncilSessionMeta {
   baseRef: string;
   baseSha: string;
   maxRounds: number;
+  signoffRevisions?: number;
   tiebreakRound: number;
   createdAt: string;
   parentSession?: string;
@@ -103,6 +104,8 @@ export interface CouncilConfig {
     round_timeout_seconds: number;
     execution_timeout_seconds: number;
     execution_attempts: number;
+    /** Extra rounds granted for resolving sign-off concerns after the Chief Engineer has converged. */
+    signoff_revisions: number;
   };
   seats: {
     lead_pm: SeatConfig;
