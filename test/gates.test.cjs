@@ -115,3 +115,53 @@ test('a malformed config fails loudly instead of silently dropping configured ga
   write('verification:\n  gates: "npm test"\n');
   assert.throws(() => lib.loadConfig(dir), /verification\.gates must be a list/);
 });
+
+test('gates run against the merge with the base branch, not the branch alone', async () => {
+  const osx = require('os');
+  const { git } = require('./helpers.cjs');
+  const ctx = setup({ project: { test_command: 'node -e "require(\'./shared.js\')"' }, council: { execution_attempts: 1 } });
+  // Base has a module the branch will rely on; the branch is cut before a later base change.
+  fs.writeFileSync(path.join(ctx.repo, 'shared.js'), 'module.exports = { ok: true };\n');
+  git(ctx.repo, 'add', '.'); git(ctx.repo, 'commit', '-qm', 'add shared');
+  const remote = fs.mkdtempSync(path.join(osx.tmpdir(), 'councilmen-base-remote-'));
+  git(remote, 'init', '-q', '--bare');
+  git(ctx.repo, 'remote', 'add', 'origin', remote);
+  git(ctx.repo, 'push', '-q', 'origin', 'main');
+
+  const { sid } = await approvedSession(ctx, 'merge-base');
+  const { execution } = engines(ctx);
+  await execution.handoff(sid);
+
+  // Base moves on in a way that breaks what the branch is about to add.
+  fs.writeFileSync(path.join(ctx.repo, 'shared.js'), 'throw new Error("base changed under the branch");\n');
+  git(ctx.repo, 'add', '.'); git(ctx.repo, '-c', 'user.email=e@x', '-c', 'user.name=E', 'commit', '-qm', 'break shared');
+  git(ctx.repo, 'push', '-q', 'origin', 'main');
+
+  ctx.adapters.eng.responses.push(commitAndFinish);
+  assert.equal(await execution.run(sid), 'BLOCKED', 'the merged state fails, so nothing is pushed');
+  assert.match(ctx.sessions.getStatus(sid).details.blockedReason, /gate\(s\) failed: test/);
+  assert.equal(git(remote, 'branch', '--list', 'council/merge-base'), '', 'branch never reached the remote');
+});
+
+test('a conflicting base branch blocks instead of pushing a broken merge', async () => {
+  const osx = require('os');
+  const { git } = require('./helpers.cjs');
+  const ctx = setup({ council: { execution_attempts: 1 } });
+  fs.writeFileSync(path.join(ctx.repo, 'feature.txt'), 'original\n');
+  git(ctx.repo, 'add', '.'); git(ctx.repo, 'commit', '-qm', 'seed feature');
+  const remote = fs.mkdtempSync(path.join(osx.tmpdir(), 'councilmen-conflict-remote-'));
+  git(remote, 'init', '-q', '--bare');
+  git(ctx.repo, 'remote', 'add', 'origin', remote);
+  git(ctx.repo, 'push', '-q', 'origin', 'main');
+
+  const { sid } = await approvedSession(ctx, 'merge-conflict');
+  const { execution } = engines(ctx);
+  await execution.handoff(sid);
+  fs.writeFileSync(path.join(ctx.repo, 'feature.txt'), 'base edit\n');
+  git(ctx.repo, 'add', '.'); git(ctx.repo, '-c', 'user.email=e@x', '-c', 'user.name=E', 'commit', '-qm', 'base edits feature');
+  git(ctx.repo, 'push', '-q', 'origin', 'main');
+
+  ctx.adapters.eng.responses.push(commitAndFinish); // writes the same file -> conflict
+  assert.equal(await execution.run(sid), 'BLOCKED');
+  assert.match(ctx.sessions.getStatus(sid).details.blockedReason, /conflicts/);
+});

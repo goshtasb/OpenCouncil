@@ -4,7 +4,7 @@ import execa from 'execa';
 import { CouncilConfig } from '../types.js';
 import { SessionManager } from './session.js';
 import { PipelineManager, syncBacklogItem } from './pipeline.js';
-import { cloneForExecution } from '../utils/git.js';
+import { cloneForExecution, syncWithBase } from '../utils/git.js';
 import { sha256File } from '../utils/hash.js';
 import { projectStateDir } from '../utils/paths.js';
 import { buildSystemPrompt } from '../utils/prompts.js';
@@ -105,6 +105,11 @@ export class ExecutionEngine {
     const blockedFile = path.join(cwd, 'BLOCKED.md');
     const gates = resolveGates(this.config);
     const verify = async () => {
+      if (this.config.verification?.merge_base !== false) {
+        const sync = await syncWithBase(cwd, this.config.project.base_branch);
+        if (!sync.ok) return { ok: false as const, reason: sync.reason, gates: [], headSha: '' };
+        if (sync.merged) logger.council('HARNESS', `Merged origin/${this.config.project.base_branch} before verification.`);
+      }
       const result = await verifyExecution({
         cwd,
         baseSha: meta.baseSha,

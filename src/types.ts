@@ -122,6 +122,8 @@ export interface CouncilConfig {
   };
   verification?: {
     gates?: VerificationGate[];
+    /** Merge the tip of the base branch before running gates, so they test what will actually land. Defaults to true. */
+    merge_base?: boolean;
     /** Stop at the first failed required gate instead of collecting every failure. Defaults to false. */
     fail_fast?: boolean;
   };

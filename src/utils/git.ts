@@ -53,6 +53,34 @@ export async function getOriginUrl(repoPath: string): Promise<string | null> {
   }
 }
 
+export type BaseSyncResult = { ok: true; merged: boolean; baseSha?: string } | { ok: false; reason: string };
+
+/**
+ * Merges the current tip of the base branch into the execution branch before verification, so the
+ * gates run on what would actually land. Verifying the branch alone can pass code that fails to
+ * build once merged (observed: a signature change that compiled alone but not against a newer base).
+ */
+export async function syncWithBase(cwd: string, baseBranch: string): Promise<BaseSyncResult> {
+  const origin = await getOriginUrl(cwd);
+  if (!origin) return { ok: true, merged: false };
+  try {
+    await execa('git', ['fetch', '--quiet', 'origin', baseBranch], { cwd });
+  } catch (err: any) {
+    return { ok: true, merged: false }; // base branch not on the remote yet: nothing to merge
+  }
+  const { stdout: baseSha } = await execa('git', ['rev-parse', `origin/${baseBranch}`], { cwd });
+  const behind = await execa('git', ['merge-base', '--is-ancestor', baseSha.trim(), 'HEAD'], { cwd, reject: false });
+  if (behind.exitCode === 0) return { ok: true, merged: false, baseSha: baseSha.trim() };
+
+  const merge = await execa('git', ['-c', 'user.email=councilmen@local', '-c', 'user.name=Open Councilmen',
+    'merge', '--no-edit', `origin/${baseBranch}`], { cwd, reject: false, all: true });
+  if (merge.exitCode !== 0) {
+    await execa('git', ['merge', '--abort'], { cwd, reject: false });
+    return { ok: false, reason: `Merging origin/${baseBranch} (${baseSha.trim().slice(0, 8)}) into the execution branch conflicts:\n${(merge.all || '').slice(-2000)}` };
+  }
+  return { ok: true, merged: true, baseSha: baseSha.trim() };
+}
+
 export async function cloneForExecution(repoPath: string, targetPath: string, branch: string, baseSha: string): Promise<void> {
   if (fs.existsSync(targetPath)) {
     throw new Error(`Execution directory already exists: ${targetPath}. Remove it to start a fresh execution.`);

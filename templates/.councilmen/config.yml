@@ -45,7 +45,8 @@ seats:
 # so include your lint and test commands explicitly. Gates make the standards machine-enforced rather
 # than advisory — add the ones your stack supports:
 verification:
-  fail_fast: false                  # false: run every gate and report all failures to the Chief Engineer
+  fail_fast: false
+  merge_base: true                  # Merge the tip of base_branch before running gates, so they test what will actually land                  # false: run every gate and report all failures to the Chief Engineer
   # gates:
   #   - name: "lint"
   #     command: "npm run lint"
