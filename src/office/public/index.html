@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Open Councilmen — Office Dashboard</title>
+  <title>Open Council — Office Dashboard</title>
   <style>
     html, body {
       margin: 0;
@@ -93,7 +93,7 @@
 <body>
   <div id="wrap">
     <canvas id="c" width="480" height="320"></canvas>
-    <div id="ticker">Connecting to Open Councilmen harness...</div>
+    <div id="ticker">Connecting to Open Council harness...</div>
   </div>
 
   <div id="modal">
@@ -117,7 +117,7 @@
       synapse: { state: 'idle', detail: 'Ready' },
       claude: { state: 'idle', detail: 'Ready' },
       grok: { state: 'idle', detail: 'Ready' },
-      ticker: { text: 'Open Councilmen initialized. Standing by.' },
+      ticker: { text: 'Open Council initialized. Standing by.' },
       pipeline: { items: [] }
     };
 
@@ -283,7 +283,7 @@
       const body = document.getElementById('modal-body');
       const items = state.pipeline?.items || [];
       if (items.length === 0) {
-        body.innerHTML = '<div>Backlog is currently empty. Use <code>councilmen backlog add "Feature name"</code> to queue tasks.</div>';
+        body.innerHTML = '<div>Backlog is currently empty. Use <code>council backlog add "Feature name"</code> to queue tasks.</div>';
         return;
       }
       const esc = (v) => String(v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

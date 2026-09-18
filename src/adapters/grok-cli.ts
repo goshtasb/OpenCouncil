@@ -29,7 +29,7 @@ export class GrokCliAdapter implements AgentAdapter {
 
   async runPrompt(prompt: string, options: AgentRunOptions): Promise<string> {
     const bin = this.findBinary();
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opencouncilmen-grok-'));
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opencouncil-grok-'));
     const promptFile = path.join(tempDir, 'prompt.md');
     fs.writeFileSync(promptFile, prompt, 'utf8');
 

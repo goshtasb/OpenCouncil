@@ -63,7 +63,7 @@ export class ExecutionEngine {
 
     const packetFile = path.join(execBase, 'COUNCIL_PACKET.md');
     const packetContent = [
-      '# Open Councilmen Execution Packet',
+      '# Open Council Execution Packet',
       `Session: ${sessionId}`,
       `Base commit: ${meta.baseSha}`,
       `Execution Branch: ${execBranch}`,
@@ -237,7 +237,7 @@ export class ExecutionEngine {
         baseBranch: this.config.project.base_branch,
         title: `[Council] ${meta.slug}`,
         body: [
-          `Automated PR generated from Open Councilmen session ${sessionId}.`,
+          `Automated PR generated from Open Council session ${sessionId}.`,
           '',
           `Approved PRD sha256: ${status.details.prdSha256}`,
           `Signed off by: ${(status.details.signedOffBy || []).join(', ') || 'n/a'}`,

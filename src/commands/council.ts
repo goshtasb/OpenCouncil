@@ -29,8 +29,8 @@ export function registerCouncilCommands(program: Command, ctx: CliContext): void
         console.log(`\nAgreed and signed off after ${result.rounds} round(s).`);
         console.log(`Deliverable: ${result.deliverable}`);
         console.log(`PDF for approval: ${result.deliverablePdf}`);
-        console.log(`Review it:  councilmen prd ${sessionId}`);
-        console.log(`Approve it: councilmen approve ${sessionId} "${result.approvalToken}"`);
+        console.log(`Review it:  council prd ${sessionId}`);
+        console.log(`Approve it: council approve ${sessionId} "${result.approvalToken}"`);
       } else {
         console.log(`\nSTALLED after ${result.rounds} round(s): ${result.reason}`);
         process.exitCode = 2;
@@ -118,8 +118,8 @@ export function registerCouncilCommands(program: Command, ctx: CliContext): void
       console.log(`\n--- Operator review ---`);
       console.log(`File: ${prd.file}`);
       console.log(`sha256: ${prd.prdSha256}`);
-      console.log(`PDF: ${prd.file.replace(/\.md$/, '.pdf')} (regenerate with: councilmen prd ${sessionId} --pdf)`);
-      console.log(`No code is written until you approve: councilmen approve ${sessionId} "${prd.approvalToken}"`);
+      console.log(`PDF: ${prd.file.replace(/\.md$/, '.pdf')} (regenerate with: council prd ${sessionId} --pdf)`);
+      console.log(`No code is written until you approve: council approve ${sessionId} "${prd.approvalToken}"`);
     }));
 
   program

@@ -2,20 +2,20 @@ node_modules/
 dist/
 .DS_Store
 *.log
-.councilmen/sessions/
-.councilmen/worktrees/
-.councilmen/backlog/
-.councilmen/exec/
-.councilmen/.env*
-!.councilmen/config.yml
-!.councilmen/CONSTITUTION.md
-!.councilmen/DELEGATION.md
+.council/sessions/
+.council/worktrees/
+.council/backlog/
+.council/exec/
+.council/.env*
+!.council/config.yml
+!.council/CONSTITUTION.md
+!.council/DELEGATION.md
 
 # Operator review copies of PRDs (generated, not source)
 /PRD-*.pdf
 
 # This repo runs the council on itself; its local council config is not shipped
-/.councilmen/
+/.council/
 
 # packed tarball is attached to releases, not committed
-/open-councilmen-*.tgz
+/open-council-*.tgz

@@ -1,4 +1,4 @@
-# Open Council — Chief Engineer Advisory Contract
+# Open Councilmen — Chief Engineer Advisory Contract
 
 This contract defines the reply structure and protocol during the deliberation phase.
 

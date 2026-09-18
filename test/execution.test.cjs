@@ -7,7 +7,7 @@ const { lib, git, setup, PLAN, SHIP, OBJECT, SIGNOFF, LEAD_OK, engines, revision
 
 test('execution: handoff → autonomous run → tests → push → PR → DONE', async () => {
   const ctx = setup();
-  const remote = fs.mkdtempSync(path.join(os.tmpdir(), 'councilmen-remote-'));
+  const remote = fs.mkdtempSync(path.join(os.tmpdir(), 'council-remote-'));
   git(remote, 'init', '-q', '--bare');
   git(ctx.repo, 'remote', 'add', 'origin', remote);
   const { sid, item } = await approvedSession(ctx, 'exec-ok');

@@ -76,7 +76,7 @@ test('a document the seat saved to a file instead of printing is recovered', () 
   const fsx = require('fs');
   const osx = require('os');
   const pathx = require('path');
-  const dir = fsx.mkdtempSync(pathx.join(osx.tmpdir(), 'councilmen-plan-'));
+  const dir = fsx.mkdtempSync(pathx.join(osx.tmpdir(), 'council-plan-'));
   const saved = pathx.join(dir, 'council-draft-v3.md');
   fsx.writeFileSync(saved, '# Product Brief\nb\n# PRD\np\n# Executive Summary\ns\n');
 

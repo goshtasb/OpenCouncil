@@ -10,7 +10,7 @@ import { registerExecutionCommands } from './commands/execution.js';
 const repoRoot = resolveRepoRoot();
 
 // The configuration is read on first use — which is always inside a command's action()
-// wrapper — so a malformed .councilmen/config.yml surfaces as one clean error line
+// wrapper — so a malformed .council/config.yml surfaces as one clean error line
 // instead of a load-time stack trace. Memoized: one load per process, one source of truth.
 let loadedConfig: CouncilConfig | undefined;
 const context: CliContext = {
@@ -23,8 +23,8 @@ const context: CliContext = {
 
 const program = new Command();
 program
-  .name('councilmen')
-  .description('Open Councilmen — Autonomous Multi-Agent Deliberation & Execution Council')
+  .name('council')
+  .description('Open Council — Autonomous Multi-Agent Deliberation & Execution Council')
   .version('0.1.0');
 
 registerProjectCommands(program, context);

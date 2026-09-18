@@ -1,20 +1,20 @@
 {
-  "name": "open-councilmen",
+  "name": "open-council",
   "version": "0.1.0",
   "description": "Autonomous, Multi-Agent Deliberation & Execution Council for Software Engineering",
-  "homepage": "https://github.com/goshtasb/OpenCouncilmen#readme",
+  "homepage": "https://github.com/goshtasb/OpenCouncil#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/goshtasb/OpenCouncilmen.git"
+    "url": "git+https://github.com/goshtasb/OpenCouncil.git"
   },
   "bugs": {
-    "url": "https://github.com/goshtasb/OpenCouncilmen/issues"
+    "url": "https://github.com/goshtasb/OpenCouncil/issues"
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "councilmen": "bin/councilmen.js",
-    "open-councilmen": "bin/councilmen.js"
+    "council": "bin/council.js",
+    "open-council": "bin/council.js"
   },
   "files": [
     "bin",
@@ -25,7 +25,7 @@
     "build": "tsc && mkdir -p dist/office/public && cp -r src/office/public/* dist/office/public/",
     "prepare": "npm run build",
     "watch": "tsc -w",
-    "start": "node bin/councilmen.js",
+    "start": "node bin/council.js",
     "test": "node --test test/*.test.cjs"
   },
   "keywords": [
@@ -40,7 +40,7 @@
     "prd",
     "engineering"
   ],
-  "author": "Open Councilmen Community",
+  "author": "Open Council Community",
   "license": "MIT",
   "dependencies": {
     "chalk": "^4.1.2",

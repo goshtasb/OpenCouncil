@@ -6,7 +6,7 @@ import { CouncilConfig } from './types.js';
 export const DEFAULT_CONFIG: CouncilConfig = {
   version: 1,
   project: {
-    name: 'Open Councilmen Project',
+    name: 'Open Council Project',
     base_branch: 'main',
     package_manager: 'npm',
     install_command: 'npm install',
@@ -25,17 +25,17 @@ export const DEFAULT_CONFIG: CouncilConfig = {
     lead_pm: {
       provider: 'antigravity',
       model: 'gemini-3.1-pro-high',
-      persona: '.councilmen/personas/lead-pm.md'
+      persona: '.council/personas/lead-pm.md'
     },
     chief_engineer: {
       provider: 'claude-code',
       model: 'opus',
-      persona: '.councilmen/personas/chief-engineer.md'
+      persona: '.council/personas/chief-engineer.md'
     },
     chief_architect: {
       provider: 'grok-cli',
       model: 'grok-4.6',
-      persona: '.councilmen/personas/chief-architect.md'
+      persona: '.council/personas/chief-architect.md'
     }
   },
   backlog: {
@@ -51,8 +51,11 @@ export const DEFAULT_CONFIG: CouncilConfig = {
 export function findConfigFile(startDir: string = process.cwd()): string | null {
   let curr = path.resolve(startDir);
   while (true) {
-    const candidate = path.join(curr, '.councilmen', 'config.yml');
-    if (fs.existsSync(candidate)) return candidate;
+    // '.councilmen' is the pre-rename directory name, still read so existing projects keep working.
+    for (const dir of ['.council', '.councilmen']) {
+      const candidate = path.join(curr, dir, 'config.yml');
+      if (fs.existsSync(candidate)) return candidate;
+    }
     const parent = path.dirname(curr);
     if (parent === curr) break;
     curr = parent;

@@ -1,10 +1,10 @@
 <div align="center">
 
-# 🏛️ Open Councilmen
+# 🏛️ Open Council
 
 ### *Three AI CLIs argue over a spec until they agree. You approve it. Then it ships.*
 
-[![CI](https://github.com/goshtasb/OpenCouncilmen/actions/workflows/ci.yml/badge.svg)](https://github.com/goshtasb/OpenCouncilmen/actions)
+[![CI](https://github.com/goshtasb/OpenCouncil/actions/workflows/ci.yml/badge.svg)](https://github.com/goshtasb/OpenCouncil/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Node Version](https://img.shields.io/badge/node-%3E%3D18.0.0-blue.svg)](https://nodejs.org/)
 
@@ -15,7 +15,7 @@
 [Honest limits](#-honest-limits) •
 [Contributing](CONTRIBUTING.md)
 
-![A real Open Councilmen session: Gemini drafts a PRD, Claude objects four times, Grok rules and signs off, the operator approves, the gates pass, a pull request opens](docs/demo.svg)
+![A real Open Council session: Gemini drafts a PRD, Claude objects four times, Grok rules and signs off, the operator approves, the gates pass, a pull request opens](docs/demo.svg)
 
 <sub>A real session, replayed from its transcript.</sub>
 
@@ -27,9 +27,9 @@ The council was pointed at this codebase and asked for a small feature.
 
 **Gemini** drafted a PRD. **Claude** read the actual source and came back with six objections citing `file:line` — including one that caught a mistake in **Grok**'s own ruling. Four rounds later Claude ratified it with zero objections, Grok signed off against a 12-point standards checklist with zero concerns, Gemini gave the final sign-off, and only then did a PDF land for a human to approve.
 
-After approval Claude implemented it in an isolated clone, the harness ran the project's gates, and [PR #1](https://github.com/goshtasb/OpenCouncilmen/pull/1) opened by itself.
+After approval Claude implemented it in an isolated clone, the harness ran the project's gates, and [PR #1](https://github.com/goshtasb/OpenCouncil/pull/1) opened by itself.
 
-Then CI failed the PR. The branch compiled, `main` compiled, the merge did not. The harness had verified the branch in isolation while GitHub verifies the merge — so it now merges your base branch *before* running its gates, and the feature the council wrote (`councilmen gates`) shipped in [v0.1.0](https://github.com/goshtasb/OpenCouncilmen/releases/tag/v0.1.0) alongside the fix.
+Then CI failed the PR. The branch compiled, `main` compiled, the merge did not. The harness had verified the branch in isolation while GitHub verifies the merge — so it now merges your base branch *before* running its gates, and the feature the council wrote (`council gates`) shipped in [v0.1.0](https://github.com/goshtasb/OpenCouncil/releases/tag/v0.1.0) alongside the fix.
 
 That is the whole idea: **the disagreement is the product.** A single agent that agrees with you produces plausible code. Three agents with different jobs, one of which cannot write code at all, produce a specification someone can actually approve.
 
@@ -49,8 +49,8 @@ One decision reaches you: approve the PRD, or don't. Nothing is written before t
 A document reaches you only when all three have signed off **the byte-identical file**: the Engineer with zero objections, the Architect with zero concerns, the Lead last. `finalize` and `approve` both re-check that against its SHA-256. After your approval the Chief Engineer works in a throwaway clone, the harness merges your base branch, runs your verification gates, and pushes only if they pass. Anything that fails is reported as `BLOCKED` — never as done.
 
 ```bash
-npm install -g https://github.com/goshtasb/OpenCouncilmen/releases/download/v0.1.0/open-councilmen-0.1.0.tgz
-councilmen init && councilmen doctor
+npm install -g https://github.com/goshtasb/OpenCouncil/releases/download/v0.1.0/open-council-0.1.0.tgz
+council init && council doctor
 ```
 
 ---
@@ -61,10 +61,10 @@ councilmen init && councilmen doctor
 - Live runs so far are single digits. **One in five stalled** without producing a document — by design, but it means you paid for nothing.
 - macOS and Linux only; gates run through a POSIX shell. CI covers Node 18/20/22 on Ubuntu and macOS.
 - `gemini-cli` is unusable on current individual Gemini tiers — use the Antigravity CLI (`agy`) for Gemini seats.
-- The Ollama adapter is implemented but has **never been run** ([#2](https://github.com/goshtasb/OpenCouncilmen/issues/2)).
-- Neither Antigravity nor `gemini-cli` can be stripped of tools, so neither may hold the zero-tool Architect seat. `councilmen doctor` warns you.
+- The Ollama adapter is implemented but has **never been run** ([#2](https://github.com/goshtasb/OpenCouncil/issues/2)).
+- Neither Antigravity nor `gemini-cli` can be stripped of tools, so neither may hold the zero-tool Architect seat. `council doctor` warns you.
 
-Found one of these the hard way? [Tell us](https://github.com/goshtasb/OpenCouncilmen/issues/new/choose) — a council that went wrong is the most useful bug report this project can get.
+Found one of these the hard way? [Tell us](https://github.com/goshtasb/OpenCouncil/issues/new/choose) — a council that went wrong is the most useful bug report this project can get.
 
 ---
 
@@ -75,11 +75,11 @@ Found one of these the hard way? [Tell us](https://github.com/goshtasb/OpenCounc
 * **No Human in the Loop**: Any seat that needs a rule the standards don't define writes `QUESTION FOR ARCHITECT: …`; the Chief Architect's ruling binds every seat. This applies during execution too.
 * **Unanimous, Zero-Concern, Hash-Bound Sign-Off**: The Operator only sees a PRD that the Chief Engineer ratified (0 objections), the Chief Architect signed off with zero REQUIRED and zero ADVISORY concerns, and the Council Lead signed off — all on the same SHA-256. Finalization and approval both re-check this.
 * **12-Point Industry Standards Review**: Every specification is audited against named current practice — SOC 2/ISO 27001 change management, OWASP ASVS + NIST SSDF secure development, SLSA/SBOM supply chain, test-pyramid and release engineering, GDPR/DPIA data governance, ISO 42010 ADRs and ISO 29148 requirement quality, SRE SLOs with OpenTelemetry, progressive delivery and expand-contract migrations, WCAG 2.2 AA and ICU i18n, SemVer/OpenAPI/RFC 9457 contracts, p95 and cost budgets, and OWASP LLM Top 10 for AI components.
-* **Engineering Standards**: `.councilmen/standards/` — 00 Manifest, 01 Architecture, 02 Coding Practices, 03 Documentation — is given to every seat; seats cite rules by number, name and section.
+* **Engineering Standards**: `.council/standards/` — 00 Manifest, 01 Architecture, 02 Coding Practices, 03 Documentation — is given to every seat; seats cite rules by number, name and section.
 * **Subscription-First (Zero API Token Burn)**: Drives the CLIs you already pay for (Claude Code, Grok, Antigravity/Gemini) or local Ollama.
 * **Verified Hands-Off Execution**: The Chief Engineer commits on `council/<slug>` in an isolated clone. Blockers go to the Chief Architect and failed checks go back to the Chief Engineer (bounded by `execution_attempts`). The harness then checks for commits and a clean tree and runs your **verification gates**, pushes, opens the PR, and (optionally) enables GitHub auto-merge. Anything that still fails is reported as `BLOCKED` — never as done.
 * **Verified Against What Will Land**: Before the gates run, the harness merges the current tip of `base_branch` into the execution branch, so a change that builds alone but breaks once merged is caught here rather than in CI. A merge conflict blocks the pull request instead of pushing a broken merge.
-* **Machine-Enforced Gates**: `verification.gates` in `.councilmen/config.yml` is an ordered list of commands — lint, typecheck, tests, `npm audit`, license check, CycloneDX SBOM, gitleaks, semgrep, axe, performance budgets — each with a timeout, a `required` flag (advisory gates are recorded but do not block) and the standard it enforces. Every run writes an immutable evidence record to the session and a gate summary into the pull request body, so the standards are checked by commands rather than trusted to a model.
+* **Machine-Enforced Gates**: `verification.gates` in `.council/config.yml` is an ordered list of commands — lint, typecheck, tests, `npm audit`, license check, CycloneDX SBOM, gitleaks, semgrep, axe, performance budgets — each with a timeout, a `required` flag (advisory gates are recorded but do not block) and the standard it enforces. Every run writes an immutable evidence record to the session and a gate summary into the pull request body, so the standards are checked by commands rather than trusted to a model.
 * **Retro Pixel-Art Office**: A local (127.0.0.1) dashboard showing which seat is working and the backlog.
 
 ---
@@ -105,7 +105,7 @@ Found one of these the hard way? [Tell us](https://github.com/goshtasb/OpenCounc
 | `gemini-cli` | `gemini` | Some Gemini Code Assist tiers no longer accept this client; use `antigravity` instead. |
 | `ollama` | `ollama` | Local models; no tool use. |
 
-Configure seats in `.councilmen/config.yml`, then run `councilmen doctor` — it asks every seat for a live reply and reports model or authentication errors before you spend a session:
+Configure seats in `.council/config.yml`, then run `council doctor` — it asks every seat for a live reply and reports model or authentication errors before you spend a session:
 
 ```yaml
 seats:
@@ -125,7 +125,7 @@ seats:
 ## 🕹️ The Retro Pixel Office
 
 ```bash
-councilmen office          # http://localhost:4321 (office.port)
+council office          # http://localhost:4321 (office.port)
 ```
 
 * Seat sprites type while that seat's CLI is running and rest when idle.
@@ -139,29 +139,29 @@ councilmen office          # http://localhost:4321 (office.port)
 ### 1. Install and initialize in your repository
 
 ```bash
-npm install -g https://github.com/goshtasb/OpenCouncilmen/releases/download/v0.1.0/open-councilmen-0.1.0.tgz
+npm install -g https://github.com/goshtasb/OpenCouncil/releases/download/v0.1.0/open-council-0.1.0.tgz
 cd /path/to/your/project
-councilmen init      # writes .councilmen/ with config, personas, contracts, standards
-councilmen doctor    # asks each configured seat for a live reply before you spend a session
+council init      # writes .council/ with config, personas, contracts, standards
+council doctor    # asks each configured seat for a live reply before you spend a session
 ```
 
 Installs in about a second from the release tarball — no registry account, nothing to compile. Node 18+, macOS or Linux. To work on the code instead, clone it: see [CONTRIBUTING.md](CONTRIBUTING.md).
-This generates `.councilmen/` with `config.yml`, `CONSTITUTION.md`, `DELEGATION.md`, `personas/`, `references/` (reply contracts) and `standards/`. Harness state (backlog, sessions, worktrees, execution clones) lives outside the repo in `~/.councilmen/projects/<repo>-<hash>/` (override with `COUNCILMEN_HOME`).
+This generates `.council/` with `config.yml`, `CONSTITUTION.md`, `DELEGATION.md`, `personas/`, `references/` (reply contracts) and `standards/`. Harness state (backlog, sessions, worktrees, execution clones) lives outside the repo in `~/.council/projects/<repo>-<hash>/` (override with `COUNCIL_HOME`).
 
 ### 2. Queue an item (WIP limit from config)
 
 ```bash
-councilmen backlog add "Add Stripe webhook idempotency and audit logs" --priority 1 --body "Details..."
+council backlog add "Add Stripe webhook idempotency and audit logs" --priority 1 --body "Details..."
 ```
 
 ### 3. Deliberate
 
 ```bash
-SESSION=$(councilmen open stripe-webhook-idempotency --item 001)   # or --task / --task-file
-councilmen deliberate $SESSION
+SESSION=$(council open stripe-webhook-idempotency --item 001)   # or --task / --task-file
+council deliberate $SESSION
 ```
 `deliberate` runs the whole loop: Lead drafts → Engineer rounds → Architect rulings on questions → tie-breaks → Architect sign-off (zero concerns) → Lead sign-off → finalize. It is resumable. Individual steps are also available: `draft`, `ask`, `tiebreak`, `review`, `signoff`, `finalize`, `status`, `gates`.
-`councilmen gates` prints the verification gates that would run for this project, in resolution order, without running them.
+`council gates` prints the verification gates that would run for this project, in resolution order, without running them.
 
 ### 4. Configure verification gates (optional but recommended)
 
@@ -175,14 +175,14 @@ verification:
       command: "npm audit --audit-level=high"
       standard: "12-point #3 Software Supply Chain"
 ```
-Defining `gates` replaces the implicit `lint_command`/`test_command` pair, so list those too. `councilmen init` writes a commented catalogue of gate examples.
+Defining `gates` replaces the implicit `lint_command`/`test_command` pair, so list those too. `council init` writes a commented catalogue of gate examples.
 
 ### 5. Approve and execute
 
 ```bash
-councilmen approve $SESSION "APPROVE 8a3f1b9c"   # token printed after finalization
-councilmen handoff $SESSION
-councilmen run $SESSION                           # --skip-agent re-runs only verification and publishing
+council approve $SESSION "APPROVE 8a3f1b9c"   # token printed after finalization
+council handoff $SESSION
+council run $SESSION                           # --skip-agent re-runs only verification and publishing
 ```
 Pushing and PR creation use `git` and the `gh` CLI, so `origin` must be a GitHub remote you can push to.
 
@@ -233,4 +233,4 @@ npm test      # node:test suite with scripted seats; no model calls
 
 ## 📄 License
 
-Open Councilmen is open-sourced under the [MIT License](LICENSE).
+Open Council is open-sourced under the [MIT License](LICENSE).

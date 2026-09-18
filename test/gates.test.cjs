@@ -71,7 +71,7 @@ test('a failed required gate blocks the pull request; an advisory failure does n
   assert.match(report.headSha, /^[0-9a-f]{40}$/);
 
   const advisory = gateConfig(setup(), [{ name: 'perf', command: 'exit 1', required: false }, { name: 'test', command: 'true' }]);
-  const remote = fs.mkdtempSync(path.join(require('os').tmpdir(), 'councilmen-gate-remote-'));
+  const remote = fs.mkdtempSync(path.join(require('os').tmpdir(), 'council-gate-remote-'));
   require('./helpers.cjs').git(remote, 'init', '-q', '--bare');
   require('./helpers.cjs').git(advisory.repo, 'remote', 'add', 'origin', remote);
   const { sid: sid2 } = await approvedSession(advisory, 'gate-advisory');
@@ -102,9 +102,9 @@ test('a failed required gate blocks the pull request; an advisory failure does n
 test('a malformed config fails loudly instead of silently dropping configured gates', () => {
   const fsx = require('fs');
   const osx = require('os');
-  const dir = fsx.mkdtempSync(path.join(osx.tmpdir(), 'councilmen-cfg-'));
-  fsx.mkdirSync(path.join(dir, '.councilmen'));
-  const write = (body) => fsx.writeFileSync(path.join(dir, '.councilmen', 'config.yml'), body);
+  const dir = fsx.mkdtempSync(path.join(osx.tmpdir(), 'council-cfg-'));
+  fsx.mkdirSync(path.join(dir, '.council'));
+  const write = (body) => fsx.writeFileSync(path.join(dir, '.council', 'config.yml'), body);
 
   write('project:\n  test_command: "npm test"\nverification:\n  gates:\n    - name: "sca"\n      command: "npm audit"\n');
   assert.deepEqual(lib.loadConfig(dir).verification.gates.map(g => g.name), ['sca']);
@@ -123,7 +123,7 @@ test('gates run against the merge with the base branch, not the branch alone', a
   // Base has a module the branch will rely on; the branch is cut before a later base change.
   fs.writeFileSync(path.join(ctx.repo, 'shared.js'), 'module.exports = { ok: true };\n');
   git(ctx.repo, 'add', '.'); git(ctx.repo, 'commit', '-qm', 'add shared');
-  const remote = fs.mkdtempSync(path.join(osx.tmpdir(), 'councilmen-base-remote-'));
+  const remote = fs.mkdtempSync(path.join(osx.tmpdir(), 'council-base-remote-'));
   git(remote, 'init', '-q', '--bare');
   git(ctx.repo, 'remote', 'add', 'origin', remote);
   git(ctx.repo, 'push', '-q', 'origin', 'main');
@@ -149,7 +149,7 @@ test('a conflicting base branch blocks instead of pushing a broken merge', async
   const ctx = setup({ council: { execution_attempts: 1 } });
   fs.writeFileSync(path.join(ctx.repo, 'feature.txt'), 'original\n');
   git(ctx.repo, 'add', '.'); git(ctx.repo, 'commit', '-qm', 'seed feature');
-  const remote = fs.mkdtempSync(path.join(osx.tmpdir(), 'councilmen-conflict-remote-'));
+  const remote = fs.mkdtempSync(path.join(osx.tmpdir(), 'council-conflict-remote-'));
   git(remote, 'init', '-q', '--bare');
   git(ctx.repo, 'remote', 'add', 'origin', remote);
   git(ctx.repo, 'push', '-q', 'origin', 'main');

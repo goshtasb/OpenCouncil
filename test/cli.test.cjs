@@ -5,14 +5,14 @@ const path = require('path');
 const { execFileSync, spawnSync } = require('child_process');
 const { makeRepo, home } = require('./helpers.cjs');
 
-const bin = path.join(__dirname, '..', 'bin', 'councilmen.js');
-const run = (cwd, ...args) => spawnSync(process.execPath, [bin, ...args], { cwd, env: { ...process.env, COUNCILMEN_HOME: home }, encoding: 'utf8' });
+const bin = path.join(__dirname, '..', 'bin', 'council.js');
+const run = (cwd, ...args) => spawnSync(process.execPath, [bin, ...args], { cwd, env: { ...process.env, COUNCIL_HOME: home }, encoding: 'utf8' });
 
 test('init installs config, personas, contracts and all four standards; project standards override defaults', () => {
   const repo = makeRepo();
   const r = run(repo, 'init');
   assert.equal(r.status, 0, r.stderr);
-  const dir = path.join(repo, '.councilmen');
+  const dir = path.join(repo, '.council');
   for (const f of ['config.yml', 'CONSTITUTION.md', 'DELEGATION.md', 'personas/lead-pm.md', 'references/review-contract.md',
     'standards/00-manifest.md', 'standards/01-architecture.md', 'standards/02-coding-practices.md', 'standards/03-documentation.md']) {
     assert.ok(fs.existsSync(path.join(dir, f)), `missing ${f}`);
@@ -38,8 +38,8 @@ test('CLI backlog add/list round-trip', () => {
 });
 
 const writeConfig = (repo, yml) => {
-  fs.mkdirSync(path.join(repo, '.councilmen'), { recursive: true });
-  fs.writeFileSync(path.join(repo, '.councilmen', 'config.yml'), yml);
+  fs.mkdirSync(path.join(repo, '.council'), { recursive: true });
+  fs.writeFileSync(path.join(repo, '.council', 'config.yml'), yml);
 };
 
 test('gates previews the default lint/test pair in resolution order', () => {

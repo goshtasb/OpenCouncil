@@ -31,7 +31,7 @@ test('office server: status API, traversal blocked, directory requests do not cr
     for (const p of ['/../server.js', '/../../../package.json', '/%2e%2e/server.js', '/..%2f..%2fpackage.json']) {
       const r = await rawGet(port, p);
       assert.ok(r.status === 403 || (r.status === 200 && r.body.startsWith('<!doctype html>')), `${p} → ${r.status} ${r.body.slice(0, 40)}`);
-      assert.doesNotMatch(r.body, /use strict|"name": "open-councilmen"/);
+      assert.doesNotMatch(r.body, /use strict|"name": "open-council"/);
     }
     const dir = await rawGet(port, '/../');
     assert.ok(dir.status === 403 || dir.body.startsWith('<!doctype html>'), `/../ → ${dir.status}`);

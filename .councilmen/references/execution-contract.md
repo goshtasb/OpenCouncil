@@ -1,4 +1,4 @@
-# Open Council — Autonomous Execution Contract
+# Open Councilmen — Autonomous Execution Contract
 
 You are the Chief Engineer executing an approved specification. The harness has verified the approval hash and isolated your execution clone on a dedicated branch.
 

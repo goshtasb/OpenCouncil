@@ -214,7 +214,7 @@ test('the signed-off PRD is always produced as a PDF for Operator approval', asy
 });
 
 test('markdown structures in a PRD render without throwing', async () => {
-  const dir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'councilmen-pdf-'));
+  const dir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'council-pdf-'));
   const out = path.join(dir, 'doc.pdf');
   const markdown = [
     '# Product Brief', '## Table', '| a | b |', '| --- | --- |', '| 1 | 2 |',

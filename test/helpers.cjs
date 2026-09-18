@@ -3,8 +3,8 @@ const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
-const home = fs.mkdtempSync(path.join(os.tmpdir(), 'councilmen-test-home-'));
-process.env.COUNCILMEN_HOME = home;
+const home = fs.mkdtempSync(path.join(os.tmpdir(), 'council-test-home-'));
+process.env.COUNCIL_HOME = home;
 
 const dist = path.join(__dirname, '..', 'dist');
 const lib = require(path.join(dist, 'index.js'));
@@ -14,7 +14,7 @@ function git(cwd, ...args) {
 }
 
 function makeRepo() {
-  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'councilmen-test-repo-'));
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'council-test-repo-'));
   git(repo, 'init', '-q', '-b', 'main');
   git(repo, 'config', 'user.email', 'test@example.com');
   git(repo, 'config', 'user.name', 'Test');
@@ -93,7 +93,7 @@ async function approvedSession(ctx, slug) {
 }
 
 function fakeGh() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'councilmen-fake-gh-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'council-fake-gh-'));
   const log = path.join(dir, 'calls.log');
   fs.writeFileSync(path.join(dir, 'gh'), `#!/bin/sh\necho "$@" >> "${log}"\ncase "$1 $2" in\n  "pr view") exit 1;;\n  "pr create") echo https://github.com/example/repo/pull/1;;\nesac\nexit 0\n`, { mode: 0o755 });
   return { dir, log };

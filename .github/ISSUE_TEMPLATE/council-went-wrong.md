@@ -15,7 +15,7 @@ labels: bug
 
 **Session evidence**
 <!-- The session directory is the most useful thing you can attach:
-     ~/.councilmen/projects/<repo>-<hash>/sessions/<id>/
+     ~/.council/projects/<repo>-<hash>/sessions/<id>/
      It holds every prompt, reply, verdict, ruling and the verification evidence.
      REDACT FIRST: prompts contain your repository's contents. -->
 

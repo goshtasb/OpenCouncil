@@ -35,7 +35,7 @@ export function renderMarkdownToPdf(markdown: string, outputPath: string, meta: 
   const doc = new PDFDocument({
     size: 'LETTER',
     margins: { top: MARGIN, bottom: MARGIN + 14, left: MARGIN, right: MARGIN },
-    info: { Title: meta.title, Subject: `Open Councilmen session ${meta.session}`, Keywords: meta.prdSha256 }
+    info: { Title: meta.title, Subject: `Open Council session ${meta.session}`, Keywords: meta.prdSha256 }
   });
   const stream = fs.createWriteStream(outputPath);
   doc.pipe(stream);
@@ -50,7 +50,7 @@ export function renderMarkdownToPdf(markdown: string, outputPath: string, meta: 
   doc.text(`Generated: ${generatedAt.toISOString()}`);
   doc.moveDown(0.5);
   doc.font(BOLD).fontSize(10).fillColor('#0f380f')
-    .text(`Operator approval: councilmen approve ${meta.session} "${meta.approvalToken}"`);
+    .text(`Operator approval: council approve ${meta.session} "${meta.approvalToken}"`);
   doc.font(BODY).fontSize(8).fillColor('#666')
     .text('No code is written until the Operator types this token. Every council seat signed off this exact document.');
   doc.moveDown(0.6);

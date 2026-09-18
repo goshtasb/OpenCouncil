@@ -1,4 +1,5 @@
 import { execFileSync } from 'child_process';
+import * as fs from 'fs';
 import * as crypto from 'crypto';
 import * as os from 'os';
 import * as path from 'path';
@@ -14,7 +15,14 @@ export function resolveRepoRoot(dir: string = process.cwd()): string {
 }
 
 export function councilHome(): string {
-  return process.env.COUNCILMEN_HOME || path.join(os.homedir(), '.councilmen');
+  // COUNCILMEN_HOME and ~/.councilmen are the pre-rename names, still honoured so existing
+  // sessions and backlogs are not orphaned. Remove once nobody is carrying them.
+  if (process.env.COUNCIL_HOME) return process.env.COUNCIL_HOME;
+  if (process.env.COUNCILMEN_HOME) return process.env.COUNCILMEN_HOME;
+  const current = path.join(os.homedir(), '.council');
+  const legacy = path.join(os.homedir(), '.councilmen');
+  if (!fs.existsSync(current) && fs.existsSync(legacy)) return legacy;
+  return current;
 }
 
 // Harness state is kept outside the repository (so it never dirties git status),

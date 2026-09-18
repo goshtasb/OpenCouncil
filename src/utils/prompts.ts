@@ -3,6 +3,19 @@ import * as path from 'path';
 import { CouncilConfig } from '../types.js';
 import { getTemplatesDir } from '../config.js';
 
+/** Looks in '.council' first, then the pre-rename '.councilmen', so existing projects keep working. */
+function projectDir(repoRoot: string, sub: string): string {
+  for (const base of ['.council', '.councilmen']) {
+    const candidate = sub ? path.join(repoRoot, base, sub) : path.join(repoRoot, base);
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return sub ? path.join(repoRoot, '.council', sub) : path.join(repoRoot, '.council');
+}
+
+function projectFile(repoRoot: string, sub: string, file: string): string {
+  return path.join(projectDir(repoRoot, sub), file);
+}
+
 export type SeatName = keyof CouncilConfig['seats'];
 export type ContractName = 'member' | 'tiebreak' | 'review' | 'execution' | 'question';
 
@@ -33,23 +46,23 @@ export function loadPersona(config: CouncilConfig, seat: SeatName, repoRoot: str
 export function loadContract(name: ContractName, repoRoot: string): string {
   const file = `${name}-contract.md`;
   return readFirstExisting(
-    [path.join(repoRoot, '.councilmen', 'references', file), path.join(getTemplatesDir(), 'references', file)],
+    [projectFile(repoRoot, 'references', file), path.join(getTemplatesDir(), 'references', file)],
     `contract '${file}'`
   );
 }
 
 export function loadConstitution(repoRoot: string): string | null {
-  const file = path.join(repoRoot, '.councilmen', 'CONSTITUTION.md');
+  const file = projectFile(repoRoot, '', 'CONSTITUTION.md');
   return fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null;
 }
 
 /**
- * Engineering standards (00-manifest.md plus sub-standards). A project's own `.councilmen/standards/`
+ * Engineering standards (00-manifest.md plus sub-standards). A project's own `.council/standards/`
  * replaces the packaged defaults entirely, so a project never gets a mix of two standard sets.
  */
 export function loadStandards(repoRoot: string): Array<{ file: string; content: string }> {
-  const projectDir = path.join(repoRoot, '.councilmen', 'standards');
-  const dir = fs.existsSync(projectDir) ? projectDir : path.join(getTemplatesDir(), 'standards');
+  const projectStandards = projectDir(repoRoot, 'standards');
+  const dir = fs.existsSync(projectStandards) ? projectStandards : path.join(getTemplatesDir(), 'standards');
   if (!fs.existsSync(dir)) return [];
   return fs
     .readdirSync(dir)

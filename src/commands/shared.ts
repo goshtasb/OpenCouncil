@@ -14,7 +14,7 @@ export function action<T extends any[]>(fn: (...args: T) => Promise<void> | void
       await fn(...args);
     } catch (err: any) {
       logger.error(err?.message || String(err));
-      if (process.env.COUNCILMEN_DEBUG && err?.stack) console.error(err.stack);
+      if (process.env.COUNCIL_DEBUG && err?.stack) console.error(err.stack);
       process.exitCode = 1;
     }
   };

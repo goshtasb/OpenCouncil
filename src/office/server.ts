@@ -43,7 +43,7 @@ export class OfficeServer {
       this.server!.listen(port, host, () => {
         const address = this.server!.address();
         const actualPort = typeof address === 'object' && address ? address.port : port;
-        logger.success(`Open Councilmen Office Dashboard running at http://localhost:${actualPort}`);
+        logger.success(`Open Council Office Dashboard running at http://localhost:${actualPort}`);
         resolve(actualPort);
       });
     });
@@ -105,7 +105,7 @@ export class OfficeServer {
       claude: fallback(activity.chief_engineer, 'Ready'),
       grok: fallback(activity.chief_architect, 'Guarding standards'),
       ticker: {
-        text: active ? `Active: ${active.title} [Status: ${active.status}]` : 'Open Councilmen idle. Add backlog item to begin.'
+        text: active ? `Active: ${active.title} [Status: ${active.status}]` : 'Open Council idle. Add backlog item to begin.'
       },
       pipeline: {
         activeItem: active ? { id: active.id, title: active.title, status: active.status } : undefined,

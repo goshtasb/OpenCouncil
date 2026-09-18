@@ -1,4 +1,4 @@
-# Open Council — Arbiter Tie-Break Contract
+# Open Councilmen — Arbiter Tie-Break Contract
 
 You receive: the project task, the latest draft, the Chief Engineer's numbered open objections, and the Council Lead's rationale. Reply with plain text only.
 

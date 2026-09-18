@@ -72,7 +72,7 @@ export async function syncWithBase(cwd: string, baseBranch: string): Promise<Bas
   const behind = await execa('git', ['merge-base', '--is-ancestor', baseSha.trim(), 'HEAD'], { cwd, reject: false });
   if (behind.exitCode === 0) return { ok: true, merged: false, baseSha: baseSha.trim() };
 
-  const merge = await execa('git', ['-c', 'user.email=councilmen@local', '-c', 'user.name=Open Councilmen',
+  const merge = await execa('git', ['-c', 'user.email=council@local', '-c', 'user.name=Open Council',
     'merge', '--no-edit', `origin/${baseBranch}`], { cwd, reject: false, all: true });
   if (merge.exitCode !== 0) {
     await execa('git', ['merge', '--abort'], { cwd, reject: false });

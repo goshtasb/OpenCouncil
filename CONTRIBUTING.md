@@ -5,8 +5,8 @@ Thanks for taking a look. This is a young project and the most useful contributi
 ## Getting set up
 
 ```bash
-git clone https://github.com/goshtasb/OpenCouncilmen.git
-cd OpenCouncilmen
+git clone https://github.com/goshtasb/OpenCouncil.git
+cd OpenCouncil
 npm ci
 npm run build
 npm test            # 56 tests, no model calls, no network
@@ -17,16 +17,16 @@ macOS or Linux, Node 18+. Windows is not supported: gates and project commands r
 To use it elsewhere without cloning, install the release tarball (it ships the compiled `dist/`, so nothing is built on your machine):
 
 ```bash
-npm install -g https://github.com/goshtasb/OpenCouncilmen/releases/download/v0.1.0/open-councilmen-0.1.0.tgz
+npm install -g https://github.com/goshtasb/OpenCouncil/releases/download/v0.1.0/open-council-0.1.0.tgz
 ```
 
-Installing from a git URL (`npm i -g github:goshtasb/OpenCouncilmen`) does **not** work: npm runs the `prepare` build without `tsc` on PATH. Use the tarball or a clone.
+Installing from a git URL (`npm i -g github:goshtasb/OpenCouncil`) does **not** work: npm runs the `prepare` build without `tsc` on PATH. Use the tarball or a clone.
 
 To try it against a repository:
 
 ```bash
-node bin/councilmen.js init      # writes .councilmen/ with config, personas, contracts, standards
-node bin/councilmen.js doctor    # asks each configured seat for a live reply
+node bin/council.js init      # writes .council/ with config, personas, contracts, standards
+node bin/council.js doctor    # asks each configured seat for a live reply
 ```
 
 `doctor` is the fastest way to find out whether your CLIs and model ids are right before spending a session.
@@ -60,7 +60,7 @@ Adapters must honor `permissionMode`: `plan` is read-only research, `exec` may e
 
 ## Adding a verification gate
 
-Gates are commands in `.councilmen/config.yml` — no code needed:
+Gates are commands in `.council/config.yml` — no code needed:
 
 ```yaml
 verification:
@@ -74,7 +74,7 @@ Gate recipes for other stacks (Python, Go, Rust) are welcome in the commented ca
 
 ## Reporting a council that went wrong
 
-The most valuable bug report includes the session directory from `~/.councilmen/projects/<repo>-<hash>/sessions/<id>/`: it holds every prompt, every reply, the verdicts, the rulings and the verification evidence. Redact anything private first — prompts contain your repository's contents.
+The most valuable bug report includes the session directory from `~/.council/projects/<repo>-<hash>/sessions/<id>/`: it holds every prompt, every reply, the verdicts, the rulings and the verification evidence. Redact anything private first — prompts contain your repository's contents.
 
 Useful things to say: which seats and models, how many rounds, and whether it stalled, looped, or agreed on something wrong.
 

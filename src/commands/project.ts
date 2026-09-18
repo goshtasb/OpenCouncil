@@ -15,19 +15,19 @@ import { CliContext, action, copyDir } from './shared.js';
 export function registerProjectCommands(program: Command, ctx: CliContext): void {
   program
     .command('init')
-    .description('Initialize Open Councilmen templates in the current repository')
+    .description('Initialize Open Council templates in the current repository')
     .action(action(() => {
-      const targetDir = path.join(ctx.repoRoot, '.councilmen');
+      const targetDir = path.join(ctx.repoRoot, '.council');
       if (fs.existsSync(targetDir)) {
-        logger.warn('.councilmen configuration already exists.');
+        logger.warn('.council configuration already exists.');
         return;
       }
       const templates = getTemplatesDir();
-      copyDir(path.join(templates, '.councilmen'), targetDir);
+      copyDir(path.join(templates, '.council'), targetDir);
       copyDir(path.join(templates, 'personas'), path.join(targetDir, 'personas'));
       copyDir(path.join(templates, 'references'), path.join(targetDir, 'references'));
       copyDir(path.join(templates, 'standards'), path.join(targetDir, 'standards'));
-      logger.success('Initialized .councilmen/ with configuration, constitution, personas, contracts, and engineering standards.');
+      logger.success('Initialized .council/ with configuration, constitution, personas, contracts, and engineering standards.');
       logger.info(`Harness state (backlog, sessions, worktrees) is stored in ${projectStateDir(ctx.repoRoot)}`);
     }));
 

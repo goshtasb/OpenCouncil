@@ -109,7 +109,7 @@ export class CouncilEngine {
     const sessionDir = this.sessionManager.getSessionPath(sessionId);
     const planFile = path.join(sessionDir, `plan-v${roundNum}.md`);
     if (!fs.existsSync(planFile)) {
-      throw new Error(`Please save plan-v${roundNum} first (councilmen draft ${sessionId} < plan.md).`);
+      throw new Error(`Please save plan-v${roundNum} first (council draft ${sessionId} < plan.md).`);
     }
 
     const roundDir = path.join(sessionDir, roundDirName('round', roundNum));
@@ -192,8 +192,8 @@ export class CouncilEngine {
     syncBacklogItem(this.pipeline, meta.backlogItem, 'awaiting-approval', sessionId);
 
     logger.council('HARNESS', `Deliverable finalized: ${deliverableFile}`);
-    logger.council('OPERATOR', `Review it with: councilmen prd ${sessionId} (PDF alongside the deliverable)`);
-    logger.council('OPERATOR', `Then authorize with: councilmen approve ${sessionId} "${approvalToken(hash)}"`);
+    logger.council('OPERATOR', `Review it with: council prd ${sessionId} (PDF alongside the deliverable)`);
+    logger.council('OPERATOR', `Then authorize with: council approve ${sessionId} "${approvalToken(hash)}"`);
     return deliverableFile;
   }
 
