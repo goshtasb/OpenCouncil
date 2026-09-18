@@ -23,6 +23,7 @@
   ],
   "scripts": {
     "build": "tsc && mkdir -p dist/office/public && cp -r src/office/public/* dist/office/public/",
+    "prepare": "npm run build",
     "watch": "tsc -w",
     "start": "node bin/councilmen.js",
     "test": "node --test test/*.test.cjs"
