@@ -7,7 +7,7 @@ import { ArchitectureReviewEngine } from '../engine/review.js';
 import { LeadSignoffEngine } from '../engine/signoff.js';
 import { CliContext, action, readStdin } from './shared.js';
 
-export function registerCouncilCommands(program: Command, { repoRoot, config }: CliContext): void {
+export function registerCouncilCommands(program: Command, ctx: CliContext): void {
   program
     .command('open <slug>')
     .description('Open a new council session in a pristine worktree')
@@ -16,7 +16,7 @@ export function registerCouncilCommands(program: Command, { repoRoot, config }: 
     .option('-i, --item <id>', 'Take the task from a backlog item (enforces the WIP limit)')
     .action(action(async (slug: string, options: { task?: string; taskFile?: string; item?: string }) => {
       const task = options.taskFile ? fs.readFileSync(options.taskFile, 'utf8') : options.task;
-      const sessionId = await new CouncilEngine(config).open(repoRoot, slug, { task, backlogItem: options.item });
+      const sessionId = await new CouncilEngine(ctx.config).open(ctx.repoRoot, slug, { task, backlogItem: options.item });
       console.log(sessionId);
     }));
 
@@ -24,7 +24,7 @@ export function registerCouncilCommands(program: Command, { repoRoot, config }: 
     .command('deliberate <session>')
     .description('Run the full council loop: Lead PM drafts, Chief Engineer rounds, tie-breaks, Chief Architect and Lead sign-off, finalize')
     .action(action(async (sessionId: string) => {
-      const result = await new DeliberationEngine(config).run(sessionId);
+      const result = await new DeliberationEngine(ctx.config).run(sessionId);
       if (result.outcome === 'AWAITING_APPROVAL') {
         console.log(`\nAgreed and signed off after ${result.rounds} round(s).`);
         console.log(`Deliverable: ${result.deliverable}`);
@@ -44,7 +44,7 @@ export function registerCouncilCommands(program: Command, { repoRoot, config }: 
     .action(action(async (sessionId: string, options: { changes?: boolean }) => {
       const content = await readStdin();
       if (!content.trim()) throw new Error('No draft provided on stdin.');
-      const file = new CouncilEngine(config).saveDraft(sessionId, options.changes ? 'changes' : 'plan', content);
+      const file = new CouncilEngine(ctx.config).saveDraft(sessionId, options.changes ? 'changes' : 'plan', content);
       console.log(`Saved: ${file}`);
     }));
 
@@ -54,7 +54,7 @@ export function registerCouncilCommands(program: Command, { repoRoot, config }: 
     .action(action(async (sessionId: string) => {
       const prompt = await readStdin();
       if (!prompt.trim()) throw new Error('No prompt provided on stdin.');
-      const verdict = await new CouncilEngine(config).askRound(sessionId, prompt);
+      const verdict = await new CouncilEngine(ctx.config).askRound(sessionId, prompt);
       console.log(`\nVERDICT: ${verdict.verdict}`);
       console.log(`OPEN OBJECTIONS: ${verdict.openObjections === 999 ? 'unparseable' : verdict.openObjections}`);
       console.log(`CONVERGED: ${verdict.converged ? 'yes' : 'no'}`);
@@ -64,7 +64,7 @@ export function registerCouncilCommands(program: Command, { repoRoot, config }: 
     .command('tiebreak <session>')
     .description('Invoke the Chief Architect for binding tie-breaking arbitration')
     .action(action(async (sessionId: string) => {
-      const res = await new TieBreakEngine(config).runTieBreak(sessionId);
+      const res = await new TieBreakEngine(ctx.config).runTieBreak(sessionId);
       console.log(`\nChief Architect Rulings (${res.rulingsCount} rulings, ${res.expectedObjections} objections):`);
       for (const r of res.rulings) console.log(`RULING ${r.id}: ${r.ruling} — ${r.reason}`);
       console.log(`SUMMARY: ${res.summary}`);
@@ -74,7 +74,7 @@ export function registerCouncilCommands(program: Command, { repoRoot, config }: 
     .command('review <session>')
     .description('Invoke the Chief Architect for 12-point industry standards sign-off')
     .action(action(async (sessionId: string) => {
-      const res = await new ArchitectureReviewEngine(config).runReview(sessionId);
+      const res = await new ArchitectureReviewEngine(ctx.config).runReview(sessionId);
       console.log(`\nArchitecture Review Verdict: ${res.verdict}`);
       console.log(`Required Concerns: ${res.requiredConcerns}, Advisory Concerns: ${res.advisoryConcerns}`);
       for (const c of res.concerns) console.log(`CONCERN ${c.id}: ${c.type} — ${c.principle} — ${c.description}`);
@@ -85,7 +85,7 @@ export function registerCouncilCommands(program: Command, { repoRoot, config }: 
     .command('signoff <session>')
     .description('Ask the Council Lead for the final sign-off (after Chief Engineer ratification and Chief Architect sign-off)')
     .action(action(async (sessionId: string) => {
-      const res = await new LeadSignoffEngine(config).runSignoff(sessionId);
+      const res = await new LeadSignoffEngine(ctx.config).runSignoff(sessionId);
       console.log(`\nCouncil Lead Verdict: ${res.verdict}`);
       if (res.summary) console.log(`SUMMARY: ${res.summary}`);
     }));
@@ -94,7 +94,7 @@ export function registerCouncilCommands(program: Command, { repoRoot, config }: 
     .command('finalize <session>')
     .description('Finalize the deliverable for the Operator (requires sign-off from all three council seats on the same version)')
     .action(action((sessionId: string) => {
-      const file = new CouncilEngine(config).finalize(sessionId);
+      const file = new CouncilEngine(ctx.config).finalize(sessionId);
       console.log(`Finalized deliverable: ${file}`);
     }));
 
@@ -104,7 +104,7 @@ export function registerCouncilCommands(program: Command, { repoRoot, config }: 
     .option('--path-only', 'Print only the file path')
     .option('--pdf', 'Regenerate and print the path of the approval PDF')
     .action(action(async (sessionId: string, options: { pathOnly?: boolean; pdf?: boolean }) => {
-      const council = new CouncilEngine(config);
+      const council = new CouncilEngine(ctx.config);
       const prd = council.deliverable(sessionId);
       if (options.pdf) {
         console.log(await council.writeDeliverablePdf(sessionId));
@@ -126,6 +126,6 @@ export function registerCouncilCommands(program: Command, { repoRoot, config }: 
     .command('approve <session> <token>')
     .description('Approve the finalized deliverable with the operator token (APPROVE <sha8>)')
     .action(action((sessionId: string, token: string) => {
-      new CouncilEngine(config).approve(sessionId, token);
+      new CouncilEngine(ctx.config).approve(sessionId, token);
     }));
 }

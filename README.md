@@ -121,7 +121,8 @@ councilmen backlog add "Add Stripe webhook idempotency and audit logs" --priorit
 SESSION=$(councilmen open stripe-webhook-idempotency --item 001)   # or --task / --task-file
 councilmen deliberate $SESSION
 ```
-`deliberate` runs the whole loop: Lead drafts → Engineer rounds → Architect rulings on questions → tie-breaks → Architect sign-off (zero concerns) → Lead sign-off → finalize. It is resumable. Individual steps are also available: `draft`, `ask`, `tiebreak`, `review`, `signoff`, `finalize`, `status`.
+`deliberate` runs the whole loop: Lead drafts → Engineer rounds → Architect rulings on questions → tie-breaks → Architect sign-off (zero concerns) → Lead sign-off → finalize. It is resumable. Individual steps are also available: `draft`, `ask`, `tiebreak`, `review`, `signoff`, `finalize`, `status`, `gates`.
+`councilmen gates` prints the verification gates that would run for this project, in resolution order, without running them.
 
 ### 4. Configure verification gates (optional but recommended)
 
