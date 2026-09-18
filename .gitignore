@@ -16,3 +16,6 @@ dist/
 
 # This repo runs the council on itself; its local council config is not shipped
 /.councilmen/
+
+# packed tarball is attached to releases, not committed
+/open-councilmen-*.tgz

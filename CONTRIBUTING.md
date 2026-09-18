@@ -14,11 +14,13 @@ npm test            # 56 tests, no model calls, no network
 
 macOS or Linux, Node 18+. Windows is not supported: gates and project commands run through a POSIX shell (use WSL).
 
-To use it elsewhere without cloning, install it straight from the repo (it builds on install, no registry account involved):
+To use it elsewhere without cloning, install the release tarball (it ships the compiled `dist/`, so nothing is built on your machine):
 
 ```bash
-npm install -g github:goshtasb/OpenCouncilmen
+npm install -g https://github.com/goshtasb/OpenCouncilmen/releases/download/v0.1.0/open-councilmen-0.1.0.tgz
 ```
+
+Installing from a git URL (`npm i -g github:goshtasb/OpenCouncilmen`) does **not** work: npm runs the `prepare` build without `tsc` on PATH. Use the tarball or a clone.
 
 To try it against a repository:
 
