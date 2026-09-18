@@ -14,6 +14,12 @@ npm test            # 56 tests, no model calls, no network
 
 macOS or Linux, Node 18+. Windows is not supported: gates and project commands run through a POSIX shell (use WSL).
 
+To use it elsewhere without cloning, install it straight from the repo (it builds on install, no registry account involved):
+
+```bash
+npm install -g github:goshtasb/OpenCouncilmen
+```
+
 To try it against a repository:
 
 ```bash

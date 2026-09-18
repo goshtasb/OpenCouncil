@@ -49,7 +49,8 @@ One decision reaches you: approve the PRD, or don't. Nothing is written before t
 A document reaches you only when all three have signed off **the byte-identical file**: the Engineer with zero objections, the Architect with zero concerns, the Lead last. `finalize` and `approve` both re-check that against its SHA-256. After your approval the Chief Engineer works in a throwaway clone, the harness merges your base branch, runs your verification gates, and pushes only if they pass. Anything that fails is reported as `BLOCKED` — never as done.
 
 ```bash
-npx open-councilmen init && councilmen doctor
+npm install -g github:goshtasb/OpenCouncilmen   # ~5s; builds on install, no npm account needed
+councilmen init && councilmen doctor
 ```
 
 ---
@@ -135,12 +136,16 @@ councilmen office          # http://localhost:4321 (office.port)
 
 ## 🚀 Quickstart
 
-### 1. Initialize in your repository
+### 1. Install and initialize in your repository
 
 ```bash
-npx open-councilmen init
-councilmen doctor
+npm install -g github:goshtasb/OpenCouncilmen
+cd /path/to/your/project
+councilmen init      # writes .councilmen/ with config, personas, contracts, standards
+councilmen doctor    # asks each configured seat for a live reply before you spend a session
 ```
+
+Installed straight from source — it compiles on install (about 5 seconds) and needs no registry account. Node 18+, macOS or Linux.
 This generates `.councilmen/` with `config.yml`, `CONSTITUTION.md`, `DELEGATION.md`, `personas/`, `references/` (reply contracts) and `standards/`. Harness state (backlog, sessions, worktrees, execution clones) lives outside the repo in `~/.councilmen/projects/<repo>-<hash>/` (override with `COUNCILMEN_HOME`).
 
 ### 2. Queue an item (WIP limit from config)
