@@ -13,3 +13,6 @@ dist/
 
 # Operator review copies of PRDs (generated, not source)
 /PRD-*.pdf
+
+# This repo runs the council on itself; its local council config is not shipped
+/.councilmen/

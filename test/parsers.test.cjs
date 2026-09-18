@@ -71,3 +71,23 @@ test('markers glued to preceding prose are still parsed (observed from a real Gr
   assert.equal(v.converged, true);
   assert.equal(lib.parseReview('SIGN-OFF WITH CONCERNS noted\nVERDICT: SIGN-OFF', 1, 'p', 'r').concerns.length, 0);
 });
+
+test('a document the seat saved to a file instead of printing is recovered', () => {
+  const fsx = require('fs');
+  const osx = require('os');
+  const pathx = require('path');
+  const dir = fsx.mkdtempSync(pathx.join(osx.tmpdir(), 'councilmen-plan-'));
+  const saved = pathx.join(dir, 'council-draft-v3.md');
+  fsx.writeFileSync(saved, '# Product Brief\nb\n# PRD\np\n# Executive Summary\ns\n');
+
+  // Observed shape: Claude Code in plan mode replies with a summary and the path it saved.
+  const reply = `Council Draft v3 is complete and saved to \`${saved}\`.\n\n# Response to Objections\n1. Adopted.`;
+  const { changes, document } = lib.splitLeadReply(lib.recoverSavedDocument(reply));
+  assert.match(changes, /Response to Objections/);
+  assert.ok(document.startsWith('# Product Brief'), 'document recovered from the saved file');
+
+  // A reply that already contains the document is untouched, and a bogus path changes nothing.
+  const inline = '# Product Brief\nx\n# PRD\ny\n# Executive Summary\nz\n';
+  assert.equal(lib.recoverSavedDocument(inline), inline);
+  assert.equal(lib.recoverSavedDocument('saved to /nope/missing.md'), 'saved to /nope/missing.md');
+});

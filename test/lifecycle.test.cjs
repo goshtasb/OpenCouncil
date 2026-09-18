@@ -139,12 +139,15 @@ test('WIP limit blocks a second backlog item from entering council', async () =>
   await assert.rejects(council.open(ctx.repo, 'second', { backlogItem: b.id }), /WIP limit 1 reached/);
 });
 
-test('lead PM output without the required headings is retried once, then fails loudly', async () => {
-  const ctx = setup({ pm: ['just some prose', 'still prose'] });
+test('lead PM output without the required headings is retried, then fails loudly', async () => {
+  const ctx = setup({ pm: ['just some prose', 'still prose', 'prose again'] });
   const { council, deliberation } = engines(ctx);
   const sid = await council.open(ctx.repo, 'bad-format', { task: 'x' });
   await assert.rejects(deliberation.run(sid), /Lead PM failed to produce a valid draft v1/);
+  assert.equal(ctx.adapters.pm.calls.length, 3, 'three attempts before giving up');
   assert.match(ctx.adapters.pm.calls[1].prompt, /rejected by the harness/);
+  assert.match(ctx.adapters.pm.calls[1].prompt, /a saved file or a summary is not read/);
+  assert.match(ctx.adapters.pm.calls[0].prompt, /Do not save it to a file/);
 });
 
 test('status details merge across transitions and legacy flat STATUS.json is readable', async () => {

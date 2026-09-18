@@ -177,6 +177,10 @@ flowchart TD
 
 ---
 
+## 💻 Supported platforms
+
+macOS and Linux, Node 18+ (CI covers Node 18/20/22 on both). Windows is not supported: the harness runs verification gates and project commands through a POSIX shell. Use WSL there.
+
 ## 🧪 Development
 
 ```bash

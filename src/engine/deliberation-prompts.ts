@@ -1,4 +1,5 @@
 // Functional core of the deliberation loop: pure prompt construction and reply splitting (no I/O).
+import * as fs from 'fs';
 import { hasHeading } from './verdicts.js';
 
 export const REVISED_DOCUMENT_MARKER = '=== REVISED DOCUMENT ===';
@@ -33,7 +34,8 @@ export function buildLeadDraftPrompt(input: LeadDraftPromptInput): string {
     input.previousPlan
       ? `Revise the draft. For every objection, ruling or concern above: adopt it and change the draft, or rebut it with cited evidence. Output a section headed "# Response to Objections" addressing each item by number, then a line containing exactly ${REVISED_DOCUMENT_MARKER}, then the complete revised document.`
       : 'Write the complete deliverable.',
-    'The document must use exactly these top-level headings, in this order: "# Product Brief", "# PRD", "# Executive Summary". Output only Markdown, with no preamble.'
+    'The document must use exactly these top-level headings, in this order: "# Product Brief", "# PRD", "# Executive Summary". Output only Markdown, with no preamble.',
+    'Print the complete document in your reply. Do not save it to a file, do not use plan-saving tooling, and do not reply with a summary or a path — only the text you print is read.'
   ].join('\n');
 }
 
@@ -84,4 +86,28 @@ export function splitLeadReply(reply: string): { changes: string | null; documen
   // Drop a trailing code fence left by models that wrapped the document.
   document = document.replace(/\n```\s*$/, '\n');
   return { changes, document: document.trim() + '\n' };
+}
+
+/**
+ * Some CLIs (Claude Code in plan mode) save the document and reply with a summary plus a path.
+ * If the reply carries no document but names a readable Markdown file that does, use that file.
+ */
+export function recoverSavedDocument(reply: string): string {
+  if (hasHeading(reply, '# Product Brief')) return reply;
+  const paths = reply.match(/(?:^|[\s`'"(])(\/[^\s`'")]+\.md)/g) || [];
+  for (const raw of paths) {
+    const file = raw.trim().replace(/^[`'"(]/, '');
+    try {
+      if (!fs.existsSync(file) || !fs.statSync(file).isFile()) continue;
+      const content = fs.readFileSync(file, 'utf8');
+      if (hasHeading(content, '# Product Brief') && hasHeading(content, '# PRD')) {
+        return reply.includes(REVISED_DOCUMENT_MARKER)
+          ? `${reply.split(REVISED_DOCUMENT_MARKER)[0]}${REVISED_DOCUMENT_MARKER}\n${content}`
+          : `${reply}\n${REVISED_DOCUMENT_MARKER}\n${content}`;
+      }
+    } catch {
+      continue;
+    }
+  }
+  return reply;
 }

@@ -5,7 +5,7 @@ import { SessionManager, roundDirName } from './session.js';
 import { PipelineManager, syncBacklogItem } from './pipeline.js';
 import { CouncilEngine } from './council.js';
 import { approvalToken, isSignedOff } from './verdicts.js';
-import { buildEngineerRoundPrompt, buildLeadDraftPrompt, splitLeadReply } from './deliberation-prompts.js';
+import { buildEngineerRoundPrompt, buildLeadDraftPrompt, recoverSavedDocument, splitLeadReply } from './deliberation-prompts.js';
 import { ArchitectQuestionEngine, extractArchitectQuestions, formatArchitectRulings } from './questions.js';
 import { TieBreakEngine } from './tiebreak.js';
 import { ArchitectureReviewEngine } from './review.js';
@@ -156,7 +156,7 @@ export class DeliberationEngine {
     const systemPrompt = buildSystemPrompt(this.config, 'lead_pm', null, meta.repoPath);
 
     let lastError = '';
-    for (let attempt = 1; attempt <= 2; attempt++) {
+    for (let attempt = 1; attempt <= 3; attempt++) {
       const attemptPrompt = attempt === 1 ? prompt : `${prompt}\n\n## Correction\nYour previous output was rejected by the harness: ${lastError} Output the full document again in the required format.`;
       logger.council('LEAD PM', `${previousPlan ? 'Revising' : 'Drafting'} v${version}${attempt > 1 ? ' (format retry)' : ''}...`);
       this.sessionManager.setActivity('lead_pm', 'busy', `${previousPlan ? 'Revising' : 'Drafting'} v${version}`);
@@ -174,7 +174,7 @@ export class DeliberationEngine {
       }
       fs.writeFileSync(path.join(sessionDir, `lead-reply-v${version}${attempt > 1 ? `-attempt${attempt}` : ''}.md`), reply, 'utf8');
 
-      const { changes, document } = splitLeadReply(reply);
+      const { changes, document } = splitLeadReply(recoverSavedDocument(reply));
       try {
         if (changes) this.council.saveDraft(sessionId, 'changes', changes);
         this.council.saveDraft(sessionId, 'plan', document);
@@ -183,6 +183,7 @@ export class DeliberationEngine {
       } catch (err: any) {
         lastError = err.message;
         logger.warn(`Lead PM draft v${version} rejected: ${lastError}`);
+        if (attempt === 1) lastError += ' Print the whole document in your reply; a saved file or a summary is not read.';
       }
     }
     throw new Error(`Lead PM failed to produce a valid draft v${version}: ${lastError}`);
