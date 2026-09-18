@@ -2,34 +2,68 @@
 
 # 🏛️ Open Councilmen
 
-### *Autonomous, Multi-Agent Deliberation & Execution Council for Software Engineering*
+### *Three AI CLIs argue over a spec until they agree. You approve it. Then it ships.*
 
 [![CI](https://github.com/goshtasb/OpenCouncilmen/actions/workflows/ci.yml/badge.svg)](https://github.com/goshtasb/OpenCouncilmen/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Node Version](https://img.shields.io/badge/node-%3E%3D18.0.0-blue.svg)](https://nodejs.org/)
 
-**Stop micromanaging AI coding assistants. Let an adversarial council of specialists deliberate, verify, and execute your backlog — powered directly by your existing AI subscriptions.**
-
-[Key Features](#-key-features) •
+[Quickstart](#-quickstart) •
+[How it works](#-how-it-works) •
 [The Council Positions](#-the-council-positions) •
 [Providers](#-providers) •
-[Live Retro Office](#-the-retro-pixel-office) •
-[Quickstart](#-quickstart) •
-[Architecture](#-architecture)
+[Honest limits](#-honest-limits) •
+[Contributing](CONTRIBUTING.md)
 
----
+![A real Open Councilmen session: Gemini drafts a PRD, Claude objects four times, Grok rules and signs off, the operator approves, the gates pass, a pull request opens](docs/demo.svg)
+
+<sub>A real session, replayed from its transcript.</sub>
 
 </div>
 
-## 💡 Why Open Councilmen?
+## 🏛️ It wrote a feature for its own repository
 
-Single-agent AI coders hallucinate, accept ambiguous requirements, make silent breaking changes, and require constant human intervention.
+The council was pointed at this codebase and asked for a small feature.
 
-**Open Councilmen** introduces an autonomous multi-agent separation of powers:
-1. **The Council Lead & Principal PM** (*Synapse Archetype*): Enforces user value, jobs-to-be-done and scope boundaries, drafts and revises the Product Brief + PRD, and gives the final sign-off.
-2. **The Chief Engineer & Developer** (*Claude Code Archetype*): Owns technical ground truth. Challenges the PM with `file:line` citations from a read-only worktree, ratifies the PRD, and later implements it in an isolated clone.
-3. **The Chief Architect & Arbiter** (*Grok Archetype*): Zero-tool impartial judge. Binding rulings on deadlocked objections (`STANDS`, `OVERRULED`, `MEASURE`), binding answers on any rule the standards leave undefined, and zero-concern sign-off against a 12-point industry standards checklist (security, supply chain, reliability, delivery, privacy, accessibility, contracts, performance and AI components) plus the project's engineering standards.
-4. **The Executive Operator** (*You*): Never in the loop. Shown the PRD **only after all three seats have signed off the identical document with zero concerns**; one typed approval starts coding, verification and pull request creation.
+**Gemini** drafted a PRD. **Claude** read the actual source and came back with six objections citing `file:line` — including one that caught a mistake in **Grok**'s own ruling. Four rounds later Claude ratified it with zero objections, Grok signed off against a 12-point standards checklist with zero concerns, Gemini gave the final sign-off, and only then did a PDF land for a human to approve.
+
+After approval Claude implemented it in an isolated clone, the harness ran the project's gates, and [PR #1](https://github.com/goshtasb/OpenCouncilmen/pull/1) opened by itself.
+
+Then CI failed the PR. The branch compiled, `main` compiled, the merge did not. The harness had verified the branch in isolation while GitHub verifies the merge — so it now merges your base branch *before* running its gates, and the feature the council wrote (`councilmen gates`) shipped in [v0.1.0](https://github.com/goshtasb/OpenCouncilmen/releases/tag/v0.1.0) alongside the fix.
+
+That is the whole idea: **the disagreement is the product.** A single agent that agrees with you produces plausible code. Three agents with different jobs, one of which cannot write code at all, produce a specification someone can actually approve.
+
+---
+
+## 💡 How it works
+
+One decision reaches you: approve the PRD, or don't. Nothing is written before that.
+
+| Seat | Runs as | Job | Cannot |
+| :--- | :--- | :--- | :--- |
+| **Lead PM** (*Synapse*) | Gemini via Antigravity | Researches the repo, writes and revises the Brief + PRD, signs off last | Edit code |
+| **Chief Engineer** | Claude Code | Verifies every claim against the code, objects with `file:line`, implements after approval | Ratify what it cannot test |
+| **Chief Architect** | Grok | Breaks deadlocks, rules on undefined rules, audits against 12 standards | See your repository at all |
+| **You** | Human | Approve the finished PRD | Be interrupted for anything else |
+
+A document reaches you only when all three have signed off **the byte-identical file**: the Engineer with zero objections, the Architect with zero concerns, the Lead last. `finalize` and `approve` both re-check that against its SHA-256. After your approval the Chief Engineer works in a throwaway clone, the harness merges your base branch, runs your verification gates, and pushes only if they pass. Anything that fails is reported as `BLOCKED` — never as done.
+
+```bash
+npx open-councilmen init && councilmen doctor
+```
+
+---
+
+## ⚠️ Honest limits
+
+- A full council takes roughly **10–40 minutes** and spends real subscription quota.
+- Live runs so far are single digits. **One in five stalled** without producing a document — by design, but it means you paid for nothing.
+- macOS and Linux only; gates run through a POSIX shell. CI covers Node 18/20/22 on Ubuntu and macOS.
+- `gemini-cli` is unusable on current individual Gemini tiers — use the Antigravity CLI (`agy`) for Gemini seats.
+- The Ollama adapter is implemented but has **never been run** ([#2](https://github.com/goshtasb/OpenCouncilmen/issues/2)).
+- Neither Antigravity nor `gemini-cli` can be stripped of tools, so neither may hold the zero-tool Architect seat. `councilmen doctor` warns you.
+
+Found one of these the hard way? [Tell us](https://github.com/goshtasb/OpenCouncilmen/issues/new/choose) — a council that went wrong is the most useful bug report this project can get.
 
 ---
 
