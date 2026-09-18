@@ -2,6 +2,14 @@
   "name": "open-councilmen",
   "version": "0.1.0",
   "description": "Autonomous, Multi-Agent Deliberation & Execution Council for Software Engineering",
+  "homepage": "https://github.com/goshtasb/OpenCouncilmen#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/goshtasb/OpenCouncilmen.git"
+  },
+  "bugs": {
+    "url": "https://github.com/goshtasb/OpenCouncilmen/issues"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
