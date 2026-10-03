@@ -90,3 +90,25 @@ backlog:
 office:
   port: 4321
   auto_open: true                   # Open the dashboard in the browser when `council office` starts
+
+# The Charm — phone voice companion (`council charm`)
+# Talks to the same three CLIs, on the same subscriptions. Routing: an explicit "ask Grok…" wins,
+# then keyword rules, then a fast router model, then default_brain. `council charm route "..."` shows the choice.
+charm:
+  host: "127.0.0.1"                 # keep loopback; reach it from the phone with `tailscale serve --bg 4322`
+  port: 4322
+  timeout_seconds: 120
+  brains:
+    claude: { provider: "claude-code", model: "sonnet" }   # Chief Engineer lane: code, repos, reasoning, writing
+    gemini: { provider: "antigravity", model: "" }         # Lead PM lane: product, research, ideas ("" = lead_pm seat model)
+    grok:   { provider: "grok-cli", model: "" }            # Chief Architect lane: right-now, opinions, the call
+  routing:
+    default_brain: "claude"
+    llm_router: true                # ask a fast model when the rules are unsure
+    router: { provider: "claude-code", model: "haiku" }
+  panel:
+    judge: "grok"                   # "what do all three think?": everyone answers, the judge rules
+  history_turns: 6
+  projects: {}                      # spoken name → repo path; Claude reads it read-only, e.g.
+  #  snapestimate: "/Users/you/code/snapestimate"
+  #  open council: "/Users/you/code/OpenCouncil"

@@ -120,6 +120,8 @@ export interface CouncilConfig {
     port: number;
     auto_open: boolean;
   };
+  /** The Charm: a voice companion (phone app) that talks to the three council brains through `council charm`. */
+  charm: CharmConfig;
   verification?: {
     gates?: VerificationGate[];
     /** Merge the tip of the base branch before running gates, so they test what will actually land. Defaults to true. */
@@ -184,4 +186,36 @@ export interface OfficeState {
     activeItem?: { id: string; title: string; status: string };
     items: Array<{ id: string; title: string; status: string; priority: number }>;
   };
+}
+
+export type CharmBrain = 'claude' | 'gemini' | 'grok';
+
+export interface CharmBrainConfig {
+  provider: string;
+  /** Empty string: use the model of the council seat that brain normally holds. */
+  model: string;
+}
+
+export interface CharmConfig {
+  /** Loopback by default; reach it from the phone through `tailscale serve`, never a public interface. */
+  host: string;
+  port: number;
+  /** Per-brain timeout for a spoken answer. */
+  timeout_seconds: number;
+  brains: Record<CharmBrain, CharmBrainConfig>;
+  routing: {
+    /** Used when the rules are not confident and the router model is off or fails. */
+    default_brain: CharmBrain;
+    /** Ask a fast model to route utterances the keyword rules cannot place. */
+    llm_router: boolean;
+    router: CharmBrainConfig;
+  };
+  panel: {
+    /** The brain that reads all three answers and gives the final one (the Chief Architect rules, as in the council). */
+    judge: CharmBrain;
+  };
+  /** Spoken project names → repository paths; a question naming one lets Claude read that repo (read-only). */
+  projects: Record<string, string>;
+  /** Turns of conversation each brain sees. */
+  history_turns: number;
 }

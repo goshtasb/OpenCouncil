@@ -35,7 +35,7 @@ export class GrokCliAdapter implements AgentAdapter {
 
     const args: string[] = [
       '--prompt-file', promptFile,
-      '--disable-web-search',
+      ...(options.webSearch ? [] : ['--disable-web-search']),
       '--no-subagents',
       '--no-memory',
       '--output-format', 'plain'

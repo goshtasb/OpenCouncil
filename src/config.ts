@@ -45,6 +45,24 @@ export const DEFAULT_CONFIG: CouncilConfig = {
   office: {
     port: 4321,
     auto_open: true
+  },
+  charm: {
+    host: '127.0.0.1',
+    port: 4322,
+    timeout_seconds: 120,
+    brains: {
+      claude: { provider: 'claude-code', model: 'sonnet' },
+      gemini: { provider: 'antigravity', model: '' },
+      grok: { provider: 'grok-cli', model: '' }
+    },
+    routing: {
+      default_brain: 'claude',
+      llm_router: true,
+      router: { provider: 'claude-code', model: 'haiku' }
+    },
+    panel: { judge: 'grok' },
+    projects: {},
+    history_turns: 6
   }
 };
 
@@ -89,7 +107,8 @@ export function loadConfig(startDir: string = process.cwd()): CouncilConfig {
         chief_architect: { ...DEFAULT_CONFIG.seats.chief_architect, ...seats.chief_architect }
       },
       backlog: { ...DEFAULT_CONFIG.backlog, ...parsed.backlog },
-      office: { ...DEFAULT_CONFIG.office, ...parsed.office }
+      office: { ...DEFAULT_CONFIG.office, ...parsed.office },
+      charm: mergeCharm(parsed.charm)
     };
   } catch (err: any) {
     // Never silently fall back: a malformed config would drop the project's verification gates.
@@ -102,4 +121,27 @@ export function getTemplatesDir(): string {
   const localTemplate = path.resolve(__dirname, '..', 'templates');
   if (fs.existsSync(localTemplate)) return localTemplate;
   return path.resolve(__dirname, 'templates');
+}
+
+function mergeCharm(parsed: Partial<CouncilConfig['charm']> | undefined): CouncilConfig['charm'] {
+  const d = DEFAULT_CONFIG.charm;
+  const p = parsed || {};
+  const brains = (p.brains || {}) as Partial<CouncilConfig['charm']['brains']>;
+  const routing = (p.routing || {}) as Partial<CouncilConfig['charm']['routing']>;
+  const merged: CouncilConfig['charm'] = {
+    ...d,
+    ...p,
+    brains: {
+      claude: { ...d.brains.claude, ...brains.claude },
+      gemini: { ...d.brains.gemini, ...brains.gemini },
+      grok: { ...d.brains.grok, ...brains.grok }
+    },
+    routing: { ...d.routing, ...routing, router: { ...d.routing.router, ...routing.router } },
+    panel: { ...d.panel, ...p.panel },
+    projects: { ...d.projects, ...p.projects }
+  };
+  const brainNames = ['claude', 'gemini', 'grok'];
+  if (!brainNames.includes(merged.routing.default_brain)) throw new Error(`charm.routing.default_brain must be one of ${brainNames.join(', ')}`);
+  if (!brainNames.includes(merged.panel.judge)) throw new Error(`charm.panel.judge must be one of ${brainNames.join(', ')}`);
+  return merged;
 }

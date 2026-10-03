@@ -11,6 +11,8 @@ export interface AgentRunOptions {
    */
   permissionMode?: 'plan' | 'exec' | 'auto';
   appendArgs?: string[];
+  /** Allow the provider's own web search where it has one (the Charm's real-time questions). Off for council seats. */
+  webSearch?: boolean;
 }
 
 export interface AgentAdapter {

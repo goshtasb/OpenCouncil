@@ -6,6 +6,7 @@ import { CliContext } from './commands/shared.js';
 import { registerProjectCommands } from './commands/project.js';
 import { registerCouncilCommands } from './commands/council.js';
 import { registerExecutionCommands } from './commands/execution.js';
+import { registerCharmCommands } from './commands/charm.js';
 
 const repoRoot = resolveRepoRoot();
 
@@ -30,5 +31,6 @@ program
 registerProjectCommands(program, context);
 registerCouncilCommands(program, context);
 registerExecutionCommands(program, context);
+registerCharmCommands(program, context);
 
 program.parseAsync(process.argv);
