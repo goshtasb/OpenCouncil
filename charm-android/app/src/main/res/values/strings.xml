@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Charm</string>
+    <string name="tile_label">Charm</string>
+    <string name="channel_council">Council</string>
+</resources>

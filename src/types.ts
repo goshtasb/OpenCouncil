@@ -218,4 +218,6 @@ export interface CharmConfig {
   projects: Record<string, string>;
   /** Turns of conversation each brain sees. */
   history_turns: number;
+  /** One shared character all three minds speak as. Empty: the plain charm voice. */
+  persona: { name: string; prompt: string };
 }

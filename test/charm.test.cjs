@@ -266,3 +266,10 @@ test('charm config: defaults merge and bad judge is rejected', () => {
 test('charm toSpeech strips markdown for reading aloud', () => {
   assert.equal(lib.toSpeech('# Hi\nSee [docs](http://x).\n```js\nx()\n```'), 'Hi\nSee docs.\n (code omitted — ask me to send it)');
 });
+
+test('charm persona is applied to every brain prompt', async () => {
+  const config = charmConfig({ persona: { name: 'Pip', prompt: 'Cheerful and curious.' } });
+  const fakes = fakeBrains(config, { grok: ['Hi.'] });
+  await new lib.CharmBrains(config).ask('grok say hi', 'p');
+  assert.match(fakes.grok.calls[0].prompt, /speak as Pip[\s\S]*Cheerful and curious/);
+});

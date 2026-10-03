@@ -109,6 +109,9 @@ charm:
   panel:
     judge: "grok"                   # "what do all three think?": everyone answers, the judge rules
   history_turns: 6
+  persona:                          # one character all three minds speak as (your own original character)
+    name: ""
+    prompt: ""
   projects: {}                      # spoken name → repo path; Claude reads it read-only, e.g.
   #  snapestimate: "/Users/you/code/snapestimate"
   #  open council: "/Users/you/code/OpenCouncil"

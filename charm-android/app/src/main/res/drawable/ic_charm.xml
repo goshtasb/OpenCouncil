@@ -1,0 +1,7 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <!-- Three linked rings: the three minds of the charm. -->
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M7,9a4,4 0,1 0,0.01 0zM7,10.6a2.4,2.4 0,1 1,-0.01 0zM17,9a4,4 0,1 0,0.01 0zM17,10.6a2.4,2.4 0,1 1,-0.01 0zM12,1.5a4,4 0,1 0,0.01 0zM12,3.1a2.4,2.4 0,1 1,-0.01 0z" />
+</vector>

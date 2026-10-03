@@ -62,7 +62,8 @@ export const DEFAULT_CONFIG: CouncilConfig = {
     },
     panel: { judge: 'grok' },
     projects: {},
-    history_turns: 6
+    history_turns: 6,
+    persona: { name: '', prompt: '' }
   }
 };
 
@@ -138,7 +139,8 @@ function mergeCharm(parsed: Partial<CouncilConfig['charm']> | undefined): Counci
     },
     routing: { ...d.routing, ...routing, router: { ...d.routing.router, ...routing.router } },
     panel: { ...d.panel, ...p.panel },
-    projects: { ...d.projects, ...p.projects }
+    projects: { ...d.projects, ...p.projects },
+    persona: { ...d.persona, ...p.persona }
   };
   const brainNames = ['claude', 'gemini', 'grok'];
   if (!brainNames.includes(merged.routing.default_brain)) throw new Error(`charm.routing.default_brain must be one of ${brainNames.join(', ')}`);

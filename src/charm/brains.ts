@@ -105,8 +105,10 @@ export class CharmBrains {
   }
 
   async askBrain(brain: CharmBrain, route: CharmRoute, history: CharmTurn[], extra = ''): Promise<string> {
+    const persona = this.config.charm.persona;
     const prompt = [
       CHARM_PREAMBLE,
+      persona.prompt ? `Character — you all speak as ${persona.name || 'the charm'}. Stay in this voice, but the content of your answer must still be correct and useful:\n${persona.prompt}` : '',
       `Your lane — ${BRAIN_LANES[brain]}`,
       formatHistory(history),
       extra,
