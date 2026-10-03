@@ -12,14 +12,14 @@ jobs:
       run:
         working-directory: charm-android
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
-      - uses: android-actions/setup-android@v3
+      # GitHub's Ubuntu runners ship the Android SDK (ANDROID_HOME); no setup action needed.
       - run: chmod +x gradlew && ./gradlew --no-daemon assembleRelease
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: charm-apk
           path: charm-android/app/build/outputs/apk/release/*.apk
