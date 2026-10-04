@@ -5,6 +5,9 @@ on:
     paths: ["charm-android/**", ".github/workflows/charm-android.yml"]
   workflow_dispatch:
 
+permissions:
+  contents: write   # publish the APK to the rolling "charm-latest" release
+
 jobs:
   apk:
     runs-on: ubuntu-latest
@@ -19,7 +22,21 @@ jobs:
           java-version: "17"
       # GitHub's Ubuntu runners ship the Android SDK (ANDROID_HOME); no setup action needed.
       - run: chmod +x gradlew && ./gradlew --no-daemon assembleRelease
+      - run: cp app/build/outputs/apk/release/*.apk council-charm.apk
       - uses: actions/upload-artifact@v5
         with:
           name: charm-apk
-          path: charm-android/app/build/outputs/apk/release/*.apk
+          path: charm-android/council-charm.apk
+      # One stable, no-login download link for the phone:
+      # https://github.com/<owner>/<repo>/releases/download/charm-latest/council-charm.apk
+      - name: Publish to the charm-latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes="Built from ${GITHUB_SHA::7} on ${GITHUB_REF_NAME}. Open this page on your phone and tap council-charm.apk to install."
+          if gh release view charm-latest >/dev/null 2>&1; then
+            gh release upload charm-latest council-charm.apk --clobber
+            gh release edit charm-latest --notes "$notes" --target "$GITHUB_SHA"
+          else
+            gh release create charm-latest council-charm.apk --prerelease --title "Charm (latest build)" --notes "$notes" --target "$GITHUB_SHA"
+          fi
