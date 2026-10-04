@@ -18,7 +18,10 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8 shrinks the APK from ~19 MB to a few MB (faster sideloads, fits browser upload limits).
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // Personal sideload: sign release with the debug key so `assembleRelease` installs directly.
             signingConfig = signingConfigs.getByName("debug")
         }
