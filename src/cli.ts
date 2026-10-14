@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import { Command } from 'commander';
 import { loadConfig } from './config.js';
 import { CouncilConfig } from './types.js';
@@ -25,7 +27,7 @@ const program = new Command();
 program
   .name('council')
   .description('Open Council — Autonomous Multi-Agent Deliberation & Execution Council')
-  .version('0.1.0');
+  .version(JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')).version);
 
 registerProjectCommands(program, context);
 registerCouncilCommands(program, context);
