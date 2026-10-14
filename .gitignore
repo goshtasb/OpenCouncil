@@ -23,3 +23,6 @@ dist/
 
 # private planning notes, never shipped
 /OPENCOUNCIL_HANDOFF.md
+
+# launch drafts (posts, DMs) are for the maintainer, not for the repository
+/launch/
