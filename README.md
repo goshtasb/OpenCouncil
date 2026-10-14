@@ -70,13 +70,7 @@ Found one of these the hard way? [Tell us](https://github.com/goshtasb/OpenCounc
 
 ---
 
-## 📱 Coming next: the Charm
-
-The council is moving to your phone. **The Charm** is a voice companion: your phone is the face and the voice, your Mac runs Claude, Gemini and Grok on the subscriptions you already pay for — no API keys.
-
-Ask one by name, or let it route: Claude for code, Gemini for product and research, Grok for right-now questions, and all three as a panel when you have a decision to make. Say *"convene the council to…"* and a real session starts; you approve the signed-off PRD from your phone.
-
-Android first. To be told the day it ships, click **Watch → Custom → Releases** at the top of this page. Ideas for it go in [Discussions](https://github.com/goshtasb/OpenCouncil/discussions/categories/ideas), and the full plan is in the [roadmap](ROADMAP.md).
+**Coming next:** the Charm, a phone voice companion for the council. See the [roadmap](ROADMAP.md).
 
 ---
 

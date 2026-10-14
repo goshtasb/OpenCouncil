@@ -18,5 +18,5 @@ dist/
 /.council/
 /.councilmen/
 
-# packed tarball is attached to releases, not committed
-/open-council-*.tgz
+# packed tarballs are attached to releases, never committed
+*.tgz

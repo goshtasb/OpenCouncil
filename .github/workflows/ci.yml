@@ -10,14 +10,20 @@ jobs:
   build:
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        os: [ ubuntu-latest, macos-latest ]
+        os: [ ubuntu-latest ]
         node-version: [ 18.x, 20.x, 22.x ]
+        # macOS arm64 runners are scarce; one macOS job keeps the platform covered without
+        # three jobs waiting on runner acquisition (observed: 15-minute "not acquired" failures).
+        include:
+          - os: macos-latest
+            node-version: 22.x
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - name: Use Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v5
       with:
         node-version: ${{ matrix.node-version }}
         cache: 'npm'

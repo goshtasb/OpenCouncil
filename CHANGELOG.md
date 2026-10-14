@@ -12,9 +12,13 @@ versions follow [SemVer](https://semver.org/). Get notified of new versions with
 ### Changed
 - Project renamed from Open Councilmen to **Open Council**.
 - Install from the release tarball; the README now leads with the demo.
+- The Charm announcement moved out of the README into `ROADMAP.md`.
 
 ### Fixed
 - This repository's own `.council/` config is no longer tracked in git.
+- The stale `open-councilmen-0.1.0.tgz` is no longer tracked; packed tarballs are ignored everywhere.
+- The repository description and homepage on GitHub pointed at the pre-rename name.
+- CI runs one macOS job instead of three, after repeated 15-minute runner-acquisition failures.
 
 ## [0.1.0] — 2026-09-18
 
