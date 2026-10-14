@@ -76,6 +76,7 @@ test('execution: files created by the install step do not block; --skip-agent re
   ctx.adapters.eng.responses.push(commitAndFinish);
   assert.equal(await execution.run(sid), 'BLOCKED');
   assert.match(ctx.sessions.getStatus(sid).details.blockedReason, /gate\(s\) failed: test/, 'install artifact was not treated as uncommitted work');
+  assert.match(ctx.adapters.eng.calls[ctx.adapters.eng.calls.length - 1].prompt, /Leave them uncommitted: install-artifact\.txt/, 'the Engineer is told which files the install step owns');
 
   ctx.config.project.test_command = 'true';
   const callsBefore = ctx.adapters.eng.calls.length;

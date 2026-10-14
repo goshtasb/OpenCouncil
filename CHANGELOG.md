@@ -30,6 +30,8 @@ The entry ticket drops from three CLIs to one, and the project ships through npm
   rounds the Chief Architect arbitrates immediately instead of at `tiebreak_round`.
 - **One retry on transient seat failures.** An empty reply, a dropped connection or a transient 5xx from a seat
   is retried once after 5 s; timeouts are not retried.
+- The execution prompt names the files the dependency install step created and tells the Chief Engineer to leave
+  them uncommitted (observed: an unrequested "commit npm lockfile" commit on the first solo-mode PR).
 - `council doctor` prints the one command that fixes each failing seat (install, login or model list) and
   suggests `council init --solo --force` when only Claude Code works.
 - `ROADMAP.md`, this changelog, and GitHub Discussions for ideas, questions and council run reports.

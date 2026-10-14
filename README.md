@@ -97,6 +97,7 @@ Council runs on real repositories, with the objections the Engineer raised, what
 | Repository | Task | Outcome |
 | :--- | :--- | :--- |
 | [goshtasb/OpenCouncil](https://github.com/goshtasb/OpenCouncil) | `council gates`: preview verification gates offline | [PR #1](https://github.com/goshtasb/OpenCouncil/pull/1), shipped in v0.1.0 after the merge-base fix ([case study](docs/showcase/opencouncil.md)) |
+| [goshtasb/council-playground](https://github.com/goshtasb/council-playground) | `slugify('')` returns `''`; accented letters transliterated. First solo-mode councils (Claude Code only, quick profile) | Session 1 stalled at 5 rounds and changed the review rule; session 2 signed off in 1 round, 5 min, [PR #1](https://github.com/goshtasb/council-playground/pull/1) opened by the harness in 59 s ([case study](docs/showcase/council-playground.md)) |
 
 A council that went wrong is just as useful here. Post yours in [Discussions → Show and tell](https://github.com/goshtasb/OpenCouncil/discussions/categories/show-and-tell).
 
@@ -104,7 +105,7 @@ A council that went wrong is just as useful here. Post yours in [Discussions →
 
 - A full council takes roughly **10–40 minutes** and spends real subscription quota. The quick profile is bounded at 4 rounds; its typical time is not yet measured on enough runs to quote.
 - Live runs so far are single digits. Before v0.2.0, **one in five stalled** without producing anything. v0.2.0 writes the last draft and the open objections on a stall, arbitrates early when objections stop dropping, and retries a seat that returns nothing once. Whether that moves the stall rate is not yet known; the numbers will be updated here as runs accumulate.
-- Solo mode (every seat on Claude Code) is new in v0.2.0: the seats are told apart by persona, model and tool access, not by vendor. It has not yet been run on as many tasks as the three-CLI council.
+- Solo mode (every seat on Claude Code) is new in v0.2.0: the seats are told apart by persona, model and tool access, not by vendor. Two live runs so far, on one small task: one stalled on review churn (which changed the review rule), one signed off in a round and shipped a PR. That is not a rate.
 - macOS and Linux only; gates run through a POSIX shell. CI covers Node 18/20/22 on Ubuntu and Node 22 on macOS.
 - `gemini-cli` is unusable on current individual Gemini tiers; use the Antigravity CLI (`agy`) for Gemini seats.
 - The Ollama adapter is implemented but **experimental**: it has never completed a live council ([#2](https://github.com/goshtasb/OpenCouncil/issues/2)).
