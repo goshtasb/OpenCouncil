@@ -12,12 +12,16 @@ import { logger } from '../utils/logger.js';
 import { checkAllSignoffs } from './signoff.js';
 import { renderMarkdownToPdf } from '../utils/pdf.js';
 import { approvalToken, hasHeading, parseEngineerReply } from './verdicts.js';
+import { QUICK_COUNCIL } from '../setup.js';
+import { Profile } from './deliberation-prompts.js';
 
 export interface OpenSessionOptions {
   parent?: string;
   continues?: string;
   task?: string;
   backlogItem?: string;
+  /** 'quick' caps this session at the quick-profile round budget whatever the project config says. */
+  profile?: Profile;
 }
 
 export class CouncilEngine {
@@ -55,6 +59,8 @@ export class CouncilEngine {
     const worktreePath = path.join(projectStateDir(absRepo), 'worktree');
     await createWorktree(absRepo, worktreePath, baseSha);
 
+    const profile: Profile = options.profile || this.config.council.profile || 'full';
+    const quick = profile === 'quick';
     this.sessionManager.createSession({
       id: sessionId,
       slug,
@@ -62,20 +68,21 @@ export class CouncilEngine {
       worktreePath,
       baseRef: baseBranch,
       baseSha,
-      maxRounds: this.config.council.max_rounds,
-      signoffRevisions: this.config.council.signoff_revisions,
-      tiebreakRound: this.config.council.tiebreak_round,
+      maxRounds: quick ? Math.min(this.config.council.max_rounds, QUICK_COUNCIL.max_rounds) : this.config.council.max_rounds,
+      signoffRevisions: quick ? Math.min(this.config.council.signoff_revisions, QUICK_COUNCIL.signoff_revisions) : this.config.council.signoff_revisions,
+      tiebreakRound: quick ? Math.min(this.config.council.tiebreak_round, QUICK_COUNCIL.tiebreak_round) : this.config.council.tiebreak_round,
       createdAt: new Date().toISOString(),
       parentSession: options.parent,
       continuesSession: options.continues,
-      backlogItem: options.backlogItem
+      backlogItem: options.backlogItem,
+      profile
     });
     if (task && task.trim()) {
       this.sessionManager.saveTask(sessionId, task);
     }
     syncBacklogItem(this.pipeline, options.backlogItem, 'in-council', sessionId);
 
-    logger.council('HARNESS', `Session opened: ${sessionId}`);
+    logger.council('HARNESS', `Session opened: ${sessionId}${quick ? ' (quick profile)' : ''}`);
     return sessionId;
   }
 

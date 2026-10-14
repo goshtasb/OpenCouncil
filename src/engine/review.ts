@@ -7,6 +7,12 @@ import { sha256File, sha256String } from '../utils/hash.js';
 import { buildSystemPrompt, FIELD_SEPARATOR, protocolLines } from '../utils/prompts.js';
 import { logger } from '../utils/logger.js';
 import { formatArchitectRulings } from './questions.js';
+import { sessionProfile } from './deliberation-prompts.js';
+
+export const FULL_REVIEW_INSTRUCTION =
+  'Audit this specification against the 12-point industry standards checklist per the Architecture Review contract. Mark inapplicable points `POINT <n>: N/A — <reason>` rather than skipping them.';
+export const QUICK_REVIEW_INSTRUCTION =
+  'Quick profile: audit this specification against the six starred checklist points (1 Change Management, 2 Secure Development, 3 Software Supply Chain, 4 Testing & Release Engineering, 5 Data Privacy & Governance, 6 Architecture Decisions & Requirements Quality) and the Project Engineering Standards. Write `POINT <n>: N/A — quick profile` for points 7 to 12 unless the change plainly touches one, and mark any starred point that cannot apply `POINT <n>: N/A — <reason>`.';
 
 export class ArchitectureReviewEngine {
   private config: CouncilConfig;
@@ -49,7 +55,7 @@ export class ArchitectureReviewEngine {
       '',
       ...formatArchitectRulings(this.sessionManager.loadArchitectRulings(sessionId)),
       '## Instructions',
-      'Audit this specification against the 12-point industry standards checklist per the Architecture Review contract. Mark inapplicable points `POINT <n>: N/A — <reason>` rather than skipping them. Output one line per concern, `CONCERN <n>: REQUIRED | ADVISORY — <principle/standard> — <explanation>`, then `VERDICT: SIGN-OFF | SIGN-OFF WITH CONCERNS | RETHINK`, then `SUMMARY: <sentence>`. Only a plain SIGN-OFF with zero concerns lets the document proceed to the Operator.'
+      `${sessionProfile(meta, this.config) === 'quick' ? QUICK_REVIEW_INSTRUCTION : FULL_REVIEW_INSTRUCTION} Output one line per concern, \`CONCERN <n>: REQUIRED | ADVISORY — <principle/standard> — <explanation>\`, then \`VERDICT: SIGN-OFF | SIGN-OFF WITH CONCERNS | RETHINK\`, then \`SUMMARY: <sentence>\`. Only a plain SIGN-OFF with zero concerns lets the document proceed to the Operator.`
     ].join('\n');
 
     fs.writeFileSync(path.join(reviewDir, 'prompt.md'), prompt, 'utf8');

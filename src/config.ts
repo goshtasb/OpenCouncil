@@ -19,7 +19,9 @@ export const DEFAULT_CONFIG: CouncilConfig = {
     round_timeout_seconds: 900,
     execution_timeout_seconds: 3600,
     execution_attempts: 3,
-    signoff_revisions: 2
+    signoff_revisions: 2,
+    profile: 'full',
+    no_progress_rounds: 3
   },
   seats: {
     lead_pm: {

@@ -16,7 +16,11 @@ export class TieBreakEngine {
     this.sessionManager = sessionManager || new SessionManager();
   }
 
-  async runTieBreak(sessionId: string): Promise<TieBreakResult> {
+  /**
+   * `early` is set by the deliberation loop when open objections have stopped dropping: the round floor
+   * (`tiebreak_round`) is then waived, because waiting for it only spends quota on identical rounds.
+   */
+  async runTieBreak(sessionId: string, options: { early?: boolean } = {}): Promise<TieBreakResult> {
     const status = this.sessionManager.getStatus(sessionId);
     if (status.status !== 'OPEN') {
       throw new Error(`Cannot tie-break: session ${sessionId} is '${status.status}'.`);
@@ -24,7 +28,7 @@ export class TieBreakEngine {
     const meta = this.sessionManager.loadMeta(sessionId);
     const roundsDone = this.sessionManager.getRoundsDone(sessionId);
     const minRound = this.config.council.tiebreak_round;
-    if (roundsDone < minRound) {
+    if (roundsDone < minRound && !options.early) {
       throw new Error(`Tie-break is only permissible from round ${minRound} (completed: ${roundsDone}). Deliberate further.`);
     }
 
