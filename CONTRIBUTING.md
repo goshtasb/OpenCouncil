@@ -9,24 +9,20 @@ git clone https://github.com/goshtasb/OpenCouncil.git
 cd OpenCouncil
 npm ci
 npm run build
-npm test            # 56 tests, no model calls, no network
+npm test            # 66 tests, no model calls, no network
 ```
 
 macOS or Linux, Node 18+. Windows is not supported: gates and project commands run through a POSIX shell (use WSL).
 
-To use it elsewhere without cloning, install the release tarball (it ships the compiled `dist/`, so nothing is built on your machine):
+To use it elsewhere without cloning, install from npm (`npm install -g open-council`) or the release tarball on the [releases page](https://github.com/goshtasb/OpenCouncil/releases); both ship the compiled `dist/`, so nothing is built on your machine.
 
-```bash
-npm install -g https://github.com/goshtasb/OpenCouncil/releases/download/v0.1.0/open-council-0.1.0.tgz
-```
-
-Installing from a git URL (`npm i -g github:goshtasb/OpenCouncil`) does **not** work: npm runs the `prepare` build without `tsc` on PATH. Use the tarball or a clone.
+Installing from a git URL (`npm i -g github:goshtasb/OpenCouncil`) does **not** work: the package has no install-time build step, by design (npm 11 refuses install scripts for global installs). Use npm, the tarball or a clone.
 
 To try it against a repository:
 
 ```bash
-node bin/council.js init      # writes .council/ with config, personas, contracts, standards
-node bin/council.js doctor    # asks each configured seat for a live reply
+node bin/council.js init      # detects installed CLIs; --solo puts every seat on Claude Code
+node bin/council.js doctor    # asks each configured seat for a live reply; prints the fix for each failure
 ```
 
 `doctor` is the fastest way to find out whether your CLIs and model ids are right before spending a session.
@@ -34,10 +30,13 @@ node bin/council.js doctor    # asks each configured seat for a live reply
 ## How it fits together
 
 ```
-src/adapters/    one file per provider CLI (claude-code, grok-cli, antigravity, gemini-cli, ollama)
+src/adapters/    one file per provider CLI (claude-code, grok-cli, antigravity, gemini-cli, ollama); registry wraps each in a one-shot retry
 src/engine/      council loop, sign-off gate, execution, verification gates, session state
 src/commands/    CLI surface, grouped by area
+src/setup.ts     seat planning for `init`: which CLIs exist, which seat each holds, how config.yml is rendered
 templates/       personas, reply contracts, engineering standards copied into a project by `init`
+skills/          the `council` skill: the Claude Code plugin command and what `npx skills add` installs
+.claude-plugin/  plugin and marketplace manifests (the repository is its own marketplace)
 test/            node:test suite; seats are scripted fakes, so tests are deterministic and free
 ```
 
@@ -80,10 +79,11 @@ Useful things to say: which seats and models, how many rounds, and whether it st
 
 ## Honest state of the project
 
-- Full councils have run end to end, including opening a real pull request, but the live sample is small (single digits). One run in five stalled without producing a document.
-- A run takes roughly 10–40 minutes and consumes real subscription quota.
+- Full councils have run end to end, including opening a real pull request, but the live sample is small (single digits). Before v0.2.0 one run in five stalled without producing a document; v0.2.0 keeps the last draft and open objections on a stall, arbitrates early when objections stop dropping, and retries a seat that returns nothing. The effect on the stall rate is not yet measured.
+- Solo mode (every seat on Claude Code) is new in v0.2.0 and has fewer live runs than the three-CLI council.
+- A full run takes roughly 10–40 minutes and consumes real subscription quota; the quick profile is bounded at 4 rounds.
 - `gemini-cli` is unusable on current individual Gemini tiers; use the Antigravity CLI (`agy`) for Gemini seats.
-- The Ollama adapter is implemented but has never been run.
+- The Ollama adapter is implemented but experimental: it has never completed a live council.
 - `signoff_revisions` (extra rounds to answer sign-off concerns) is covered by tests but has not yet fired in a live run.
 
 If you hit any of these, saying so in an issue is a contribution.

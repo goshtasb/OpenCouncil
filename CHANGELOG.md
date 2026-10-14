@@ -5,7 +5,14 @@ versions follow [SemVer](https://semver.org/). Get notified of new versions with
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-10-14
+
+The entry ticket drops from three CLIs to one, and the project ships through npm, the Claude Code plugin marketplace and the skills ecosystem.
+
 ### Added
+- **Published as `open-council` on npm**: `npx open-council init`. Install-time scripts removed from the package.
+- **Claude Code plugin**: `/plugin marketplace add goshtasb/OpenCouncil`, `/plugin install open-council@open-council`, then `/open-council:council "<task>"` drives backlog → open → deliberate, stops for the human approval, then handoff → run.
+- **Agent skill**: `npx skills add goshtasb/OpenCouncil` installs the same `council` skill for other agents.
 - **Solo mode.** `council init` detects which provider CLIs are installed and assigns seats from what it finds.
   With only Claude Code present every seat runs on Claude Code (Lead PM on sonnet, Chief Engineer on opus,
   Chief Architect on sonnet with all tools disabled). `--solo` and `--full` force a plan; `--force` rewrites
@@ -23,11 +30,13 @@ versions follow [SemVer](https://semver.org/). Get notified of new versions with
   suggests `council init --solo --force` when only Claude Code works.
 - `ROADMAP.md`, this changelog, and GitHub Discussions for ideas, questions and council run reports.
 - Issue and pull request templates, and a security policy.
+- `docs/office.gif`: the pixel office replaying the seat states of the session that built PR #1; `docs/showcase/` case studies.
 
 ### Changed
 - Project renamed from Open Councilmen to **Open Council**.
-- Install from the release tarball; the README now leads with the demo.
+- README rewritten outcome-first: one-liner, one-line install, five-minute run, how it differs from an LLM council, showcases, honest limits.
 - The Charm announcement moved out of the README into `ROADMAP.md`.
+- CLI `--version` reads `package.json`.
 
 ### Fixed
 - This repository's own `.council/` config is no longer tracked in git.
@@ -55,5 +64,6 @@ First public release.
 - Documents a seat saves instead of printing are recovered.
 - The zero-tool Architect seat stays tool-free across providers.
 
-[Unreleased]: https://github.com/goshtasb/OpenCouncil/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/goshtasb/OpenCouncil/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/goshtasb/OpenCouncil/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/goshtasb/OpenCouncil/releases/tag/v0.1.0

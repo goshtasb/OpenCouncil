@@ -14,12 +14,13 @@ Want to hear when something ships? **Watch → Custom → Releases** at the top 
   Android first. In development on [`feat/charm-bridge`](https://github.com/goshtasb/OpenCouncil/tree/feat/charm-bridge).
 - **More real runs** — live councils are still single digits. Every run, good or bad, goes into
   [Discussions → Show and tell](https://github.com/goshtasb/OpenCouncil/discussions/categories/show-and-tell) so the stall rate is public.
+- **Showcases on real repositories** — council runs on open-source issues, written up in `docs/showcase/` with the objections, the rulings and the pull request.
 
 ## Next
 
-- **Publish to npm** so install is `npm i -g open-council` instead of a tarball URL.
+- **MCP server** — `council_open`, `council_deliberate`, `council_status`, `council_approve` as MCP tools, so Cursor, Codex and Gemini CLI users can drive a council without the CLI. Not started; the agent skill (`npx skills add goshtasb/OpenCouncil`) covers those agents through their shell for now.
 - **Ollama adapter verified end to end** ([#2](https://github.com/goshtasb/OpenCouncil/issues/2)) — a fully local council.
-- **Faster stalls** — detect a council that cannot converge earlier, so a stall costs minutes, not quota.
+- **Measured stall rate** — v0.2.0 arbitrates early and keeps a partial result on a stall; the next step is enough runs to say what the stall rate is now.
 - **Session replay** — share a council transcript as a page, the way the demo in the README was made.
 
 ## Later
