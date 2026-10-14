@@ -22,6 +22,10 @@ The entry ticket drops from three CLIs to one, and the project ships through npm
 - **Partial result on a stall.** A council that stalls, or dies on a seat failure, writes
   `stalled-draft-and-objections.md` (task, last draft, open objections, unresolved rulings and concerns) into the
   session instead of leaving nothing. It is never approvable.
+- **Resubmission rule for the Architect review.** On a resubmitted document the Chief Architect sees its previous
+  review and the council's response, and a concern that could have been raised on the previous version and was not
+  is waived. Found on the first live solo run: the Engineer ratified every revision while the Architect raised a
+  different advisory concern each round until the budget ran out.
 - **Early arbitration.** When open objections have not dropped for `no_progress_rounds` (default 3) consecutive
   rounds the Chief Architect arbitrates immediately instead of at `tiebreak_round`.
 - **One retry on transient seat failures.** An empty reply, a dropped connection or a transient 5xx from a seat

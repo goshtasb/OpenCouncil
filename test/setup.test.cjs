@@ -147,6 +147,24 @@ test('a seat failure mid-run keeps the session resumable and still writes the pa
   assert.match(fs.readFileSync(report, 'utf8'), /Interrupted by a harness error/);
 });
 
+test('a resubmitted document shows the Architect its previous review and waives concerns it did not raise then', async () => {
+  const ctx = setup({
+    pm: [PLAN(1), revision(2), LEAD_OK],
+    eng: [SHIP, SHIP],
+    arch: ['CONCERN 1: ADVISORY — SRE — name the rollback command\nVERDICT: SIGN-OFF WITH CONCERNS', SIGNOFF]
+  });
+  const { council, deliberation } = engines(ctx);
+  const sid = await council.open(ctx.repo, 'review-churn', { task: 'x' });
+  const result = await deliberation.run(sid);
+  assert.equal(result.outcome, 'AWAITING_APPROVAL');
+  const [first, second] = ctx.adapters.arch.calls;
+  assert.doesNotMatch(first.prompt, /Your Previous Review/);
+  assert.doesNotMatch(first.prompt, /This is a resubmission/);
+  assert.match(second.prompt, /## Your Previous Review \(v1\)[\s\S]*name the rollback command/);
+  assert.match(second.prompt, /The Council's Response to That Review[\s\S]*Adopted: added a test/);
+  assert.match(second.prompt, /This is a resubmission[\s\S]*and was not is waived/);
+});
+
 test('quick profile: open --quick caps the round budget and every seat is told it is a quick council', async () => {
   const ctx = setup({ pm: [PLAN(1), LEAD_OK], eng: [SHIP], arch: [SIGNOFF] });
   const { council, deliberation } = engines(ctx);

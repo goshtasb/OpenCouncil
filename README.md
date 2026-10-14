@@ -130,6 +130,7 @@ A document reaches you only when all three have signed off **the byte-identical 
 ### What happens when it does not converge
 
 - Open objections flat for three rounds: the Chief Architect arbitrates right away instead of waiting for `tiebreak_round`.
+- A resubmitted document: the Architect sees its previous review and the council's response, and a concern it could have raised last time and did not is waived. New concerns must name what the revision introduced.
 - A seat returns nothing or drops the connection: one retry after five seconds. Timeouts are not retried.
 - `max_rounds` passes without unanimous sign-off: the session stops as `STALLED`, the backlog item is parked, and `stalled-draft-and-objections.md` in the session holds the task, the last draft and every open objection, ruling and concern. It is marked unapproved and `approve` refuses it.
 
