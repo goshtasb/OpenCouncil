@@ -1,5 +1,5 @@
 {
-  "name": "open-council",
+  "name": "open-council-cli",
   "version": "0.2.0",
   "description": "Three AIs argue over your spec until they agree. You approve it. Then one ships it as a tested, gated pull request. It never says done when it isn't.",
   "homepage": "https://github.com/goshtasb/OpenCouncil#readme",
@@ -14,7 +14,8 @@
   "types": "dist/index.d.ts",
   "bin": {
     "council": "bin/council.js",
-    "open-council": "bin/council.js"
+    "open-council": "bin/council.js",
+    "open-council-cli": "bin/council.js"
   },
   "files": [
     "bin",
