@@ -2,7 +2,7 @@
 name: council
 description: 'Run an Open Council on a task. Three AI seats (Lead PM, Chief Engineer, Chief Architect) deliberate a PRD until all three sign off the same document, the human approves it, then the Chief Engineer implements it in an isolated clone and the harness opens a verified pull request. Use when the user asks to convene the council, run a council on something, deliberate a spec, or wants a spec argued out and shipped as a PR.'
 argument-hint: '[task description] [--quick]'
-allowed-tools: 'Bash(council:*) Bash(npx open-council:*) Bash(git:*) Bash(gh:*) Read'
+allowed-tools: 'Bash(council:*) Bash(npx open-council-cli:*) Bash(git:*) Bash(gh:*) Read'
 ---
 
 # Open Council
@@ -33,8 +33,8 @@ If the arguments contain `--quick`, use the quick profile (at most 4 rounds, six
 
 Run each command with Bash, show the user the relevant output, and stop at the approval step.
 
-1. **Find the CLI.** Run `council --version`. If it is not installed, use `npx -y open-council@latest` in
-   place of `council` for every command below, or install it with `npm install -g open-council`.
+1. **Find the CLI.** Run `council --version`. If it is not installed, use `npx -y open-council-cli@latest` in
+   place of `council` for every command below, or install it with `npm install -g open-council-cli`.
 2. **Initialize once.** If the repository has no `.council/` directory, run `council init` (add `--quick` if
    requested). It detects which provider CLIs are installed; with only Claude Code present every seat runs on
    Claude Code. Then run `council doctor` and show the user any seat that failed together with the fix command it printed. Do not continue until every seat answers.

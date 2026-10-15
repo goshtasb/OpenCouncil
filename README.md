@@ -5,7 +5,7 @@
 ### Three AIs argue over your spec until they agree. Then one ships it: tested, gated, as a pull request. It never says done when it isn't.
 
 [![CI](https://github.com/goshtasb/OpenCouncil/actions/workflows/ci.yml/badge.svg)](https://github.com/goshtasb/OpenCouncil/actions)
-[![npm](https://img.shields.io/npm/v/open-council.svg)](https://www.npmjs.com/package/open-council)
+[![npm](https://img.shields.io/npm/v/open-council-cli.svg)](https://www.npmjs.com/package/open-council-cli)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Node Version](https://img.shields.io/badge/node-%3E%3D18.0.0-blue.svg)](https://nodejs.org/)
 
@@ -29,7 +29,7 @@
 Only Claude Code installed? That is enough. `init` detects which CLIs you have and puts every seat on Claude Code when it is the only one (solo mode).
 
 ```bash
-npx open-council init     # writes .council/ and picks a provider for each seat
+npx open-council-cli init     # writes .council/ and picks a provider for each seat
 council doctor            # every seat answers, or you get the one command that fixes it
 ```
 
@@ -52,7 +52,7 @@ Node 18+, macOS or Linux. More options under [Other install methods](#-other-ins
 
 ```bash
 cd /path/to/your/repo
-npx open-council init --quick                       # solo mode if only Claude Code is installed
+npx open-council-cli init --quick                       # solo mode if only Claude Code is installed
 council doctor
 council backlog add "Return 404 instead of 500 for unknown slugs" --priority 1
 SESSION=$(council open unknown-slug-404 --item 001)
@@ -238,8 +238,8 @@ Pushing and PR creation use `git` and the `gh` CLI, so `origin` must be a GitHub
 ## 📦 Other install methods
 
 ```bash
-npm install -g open-council                    # global install from npm
-npm install -g https://github.com/goshtasb/OpenCouncil/releases/download/v0.2.0/open-council-0.2.0.tgz   # release tarball, no registry
+npm install -g open-council-cli                # global install from npm; the commands are `council` and `open-council`
+npm install -g https://github.com/goshtasb/OpenCouncil/releases/download/v0.2.0/open-council-cli-0.2.0.tgz   # release tarball, no registry
 git clone https://github.com/goshtasb/OpenCouncil && cd OpenCouncil && npm ci && npm run build   # from source; see CONTRIBUTING.md
 ```
 

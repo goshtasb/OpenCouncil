@@ -14,7 +14,7 @@ npm test            # 66 tests, no model calls, no network
 
 macOS or Linux, Node 18+. Windows is not supported: gates and project commands run through a POSIX shell (use WSL).
 
-To use it elsewhere without cloning, install from npm (`npm install -g open-council`) or the release tarball on the [releases page](https://github.com/goshtasb/OpenCouncil/releases); both ship the compiled `dist/`, so nothing is built on your machine.
+To use it elsewhere without cloning, install from npm (`npm install -g open-council-cli`) or the release tarball on the [releases page](https://github.com/goshtasb/OpenCouncil/releases); both ship the compiled `dist/`, so nothing is built on your machine.
 
 Installing from a git URL (`npm i -g github:goshtasb/OpenCouncil`) does **not** work: the package has no install-time build step, by design (npm 11 refuses install scripts for global installs). Use npm, the tarball or a clone.
 

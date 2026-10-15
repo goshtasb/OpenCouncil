@@ -10,7 +10,7 @@ versions follow [SemVer](https://semver.org/). Get notified of new versions with
 The entry ticket drops from three CLIs to one, and the project ships through npm, the Claude Code plugin marketplace and the skills ecosystem.
 
 ### Added
-- **Published as `open-council` on npm**: `npx open-council init`. Install-time scripts removed from the package.
+- **Published as `open-council-cli` on npm**: `npx open-council-cli init` (npm rejects `open-council` as too similar to an existing package). Install-time scripts removed from the package.
 - **Claude Code plugin**: `/plugin marketplace add goshtasb/OpenCouncil`, `/plugin install open-council@open-council`, then `/open-council:council "<task>"` drives backlog → open → deliberate, stops for the human approval, then handoff → run.
 - **Agent skill**: `npx skills add goshtasb/OpenCouncil` installs the same `council` skill for other agents.
 - **Solo mode.** `council init` detects which provider CLIs are installed and assigns seats from what it finds.
