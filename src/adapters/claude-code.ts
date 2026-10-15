@@ -1,6 +1,10 @@
 import execa from 'execa';
 import { AgentAdapter, AgentRunOptions, requireOutput } from './base.js';
 
+// Verified 2026-10-14 (claude 2.1.280): with `--tools ''` the model cannot read a canary file, but it may
+// answer "I'll read the file now" and stop. Telling it up front that it has no tools removes that failure.
+const NO_TOOLS_NOTE = 'You have no tools in this session: no file access, no shell, no web. Judge only the text in the prompt and answer in full; never say you will look something up.';
+
 const PERMISSION_MODES: Record<NonNullable<AgentRunOptions['permissionMode']>, string> = {
   plan: 'plan',
   exec: 'acceptEdits',
@@ -35,8 +39,9 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     if (options.model) {
       args.push('--model', options.model);
     }
-    if (options.systemPrompt) {
-      args.push('--append-system-prompt', options.systemPrompt);
+    const systemPrompt = options.permissionMode ? options.systemPrompt : [NO_TOOLS_NOTE, options.systemPrompt].filter(Boolean).join('\n\n');
+    if (systemPrompt) {
+      args.push('--append-system-prompt', systemPrompt);
     }
     if (options.appendArgs) {
       args.push(...options.appendArgs);

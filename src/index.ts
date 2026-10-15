@@ -1,5 +1,6 @@
 export * from './types.js';
 export * from './config.js';
+export * from './setup.js';
 export * from './engine/session.js';
 export * from './engine/council.js';
 export * from './engine/verdicts.js';

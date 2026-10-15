@@ -1,4 +1,4 @@
-import { AgentAdapter } from './base.js';
+import { AgentAdapter, withTransientRetry } from './base.js';
 import { ClaudeCodeAdapter } from './claude-code.js';
 import { GrokCliAdapter } from './grok-cli.js';
 import { GeminiCliAdapter } from './gemini-cli.js';
@@ -6,15 +6,17 @@ import { AntigravityAdapter } from './antigravity.js';
 import { OllamaAdapter } from './ollama.js';
 
 const adapters = new Map<string, AgentAdapter>();
-adapters.set('claude-code', new ClaudeCodeAdapter());
-adapters.set('grok-cli', new GrokCliAdapter());
-adapters.set('gemini-cli', new GeminiCliAdapter());
-adapters.set('antigravity', new AntigravityAdapter());
-adapters.set('ollama', new OllamaAdapter());
 
+// Every adapter, built in or registered, gets one retry on a transient failure (see withTransientRetry).
 export function registerAdapter(providerName: string, adapter: AgentAdapter): void {
-  adapters.set(providerName, adapter);
+  adapters.set(providerName, withTransientRetry(adapter));
 }
+
+registerAdapter('claude-code', new ClaudeCodeAdapter());
+registerAdapter('grok-cli', new GrokCliAdapter());
+registerAdapter('gemini-cli', new GeminiCliAdapter());
+registerAdapter('antigravity', new AntigravityAdapter());
+registerAdapter('ollama', new OllamaAdapter());
 
 export function listAdapters(): string[] {
   return Array.from(adapters.keys());

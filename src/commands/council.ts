@@ -5,6 +5,7 @@ import { DeliberationEngine } from '../engine/deliberation.js';
 import { TieBreakEngine } from '../engine/tiebreak.js';
 import { ArchitectureReviewEngine } from '../engine/review.js';
 import { LeadSignoffEngine } from '../engine/signoff.js';
+import { logger } from '../utils/logger.js';
 import { CliContext, action, readStdin } from './shared.js';
 
 export function registerCouncilCommands(program: Command, ctx: CliContext): void {
@@ -14,9 +15,12 @@ export function registerCouncilCommands(program: Command, ctx: CliContext): void
     .option('-t, --task <text>', 'Task statement for the council')
     .option('-f, --task-file <path>', 'Read the task statement from a file')
     .option('-i, --item <id>', 'Take the task from a backlog item (enforces the WIP limit)')
-    .action(action(async (slug: string, options: { task?: string; taskFile?: string; item?: string }) => {
+    .option('-q, --quick', 'Quick profile for this session: at most 4 rounds, tie-break from round 3, six-point review')
+    .action(action(async (slug: string, options: { task?: string; taskFile?: string; item?: string; quick?: boolean }) => {
+      // stdout is the session id and nothing else: the README and the skill use SESSION=$(council open …).
+      logger.useStderr();
       const task = options.taskFile ? fs.readFileSync(options.taskFile, 'utf8') : options.task;
-      const sessionId = await new CouncilEngine(ctx.config).open(ctx.repoRoot, slug, { task, backlogItem: options.item });
+      const sessionId = await new CouncilEngine(ctx.config).open(ctx.repoRoot, slug, { task, backlogItem: options.item, profile: options.quick ? 'quick' : undefined });
       console.log(sessionId);
     }));
 
@@ -33,6 +37,7 @@ export function registerCouncilCommands(program: Command, ctx: CliContext): void
         console.log(`Approve it: council approve ${sessionId} "${result.approvalToken}"`);
       } else {
         console.log(`\nSTALLED after ${result.rounds} round(s): ${result.reason}`);
+        if (result.report) console.log(`Partial result (last draft + open objections, not approved): ${result.report}`);
         process.exitCode = 2;
       }
     }));

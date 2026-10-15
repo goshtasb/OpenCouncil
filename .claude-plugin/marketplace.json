@@ -1,0 +1,14 @@
+{
+  "name": "open-council",
+  "description": "Open Council: a council of AI seats deliberates your PRD to unanimous sign-off, you approve it, and it ships as a verified pull request.",
+  "owner": { "name": "Ashkan Goshtasb", "url": "https://github.com/goshtasb" },
+  "plugins": [
+    {
+      "name": "open-council",
+      "source": ".",
+      "description": "Three AI seats argue over your spec until they agree. You approve it. Then it ships, tested and gated, as a PR. Adds /open-council:council.",
+      "category": "development",
+      "tags": ["prd", "multi-model", "code-review", "pull-request", "claude-code", "grok", "gemini"]
+    }
+  ]
+}

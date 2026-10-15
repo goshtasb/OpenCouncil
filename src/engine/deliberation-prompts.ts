@@ -1,6 +1,19 @@
 // Functional core of the deliberation loop: pure prompt construction and reply splitting (no I/O).
 import * as fs from 'fs';
+import { CouncilConfig, CouncilSessionMeta } from '../types.js';
 import { hasHeading } from './verdicts.js';
+
+export type Profile = 'full' | 'quick';
+
+/** The profile a session runs under: what it was opened with, else the project config, else full. */
+export function sessionProfile(meta: Pick<CouncilSessionMeta, 'profile'>, config: CouncilConfig): Profile {
+  return meta.profile || config.council.profile || 'full';
+}
+
+export const QUICK_LEAD_INSTRUCTION =
+  'Quick profile: keep the whole document under 1,200 words. Every required section stays, but a section that does not apply is a single line `N/A: <reason>`. Specify the smallest change that fully answers the task.';
+export const QUICK_ENGINEER_INSTRUCTION =
+  'Quick profile: raise only objections that would change what gets built or how it is tested. Style preferences and optional improvements are not objections; mention them after the numbered list as notes.';
 
 export const REVISED_DOCUMENT_MARKER = '=== REVISED DOCUMENT ===';
 
@@ -13,6 +26,7 @@ export interface LeadDraftPromptInput {
   rulings: string[];
   worktreePath: string;
   baseSha: string;
+  profile?: Profile;
 }
 
 export const ASK_ARCHITECT_INSTRUCTION =
@@ -35,6 +49,7 @@ export function buildLeadDraftPrompt(input: LeadDraftPromptInput): string {
       ? `Revise the draft. For every objection, ruling or concern above: adopt it and change the draft, or rebut it with cited evidence. Output a section headed "# Response to Objections" addressing each item by number, then a line containing exactly ${REVISED_DOCUMENT_MARKER}, then the complete revised document.`
       : 'Write the complete deliverable.',
     'The document must use exactly these top-level headings, in this order: "# Product Brief", "# PRD", "# Executive Summary". Output only Markdown, with no preamble.',
+    ...(input.profile === 'quick' ? [QUICK_LEAD_INSTRUCTION] : []),
     'Print the complete document in your reply. Do not save it to a file, do not use plan-saving tooling, and do not reply with a summary or a path — only the text you print is read.'
   ].join('\n');
 }
@@ -50,6 +65,7 @@ export interface EngineerRoundPromptInput {
   rulings: string[];
   worktreePath: string;
   baseSha: string;
+  profile?: Profile;
 }
 
 export function buildEngineerRoundPrompt(input: EngineerRoundPromptInput): string {
@@ -67,6 +83,7 @@ export function buildEngineerRoundPrompt(input: EngineerRoundPromptInput): strin
     ...input.rulings,
     '## Instructions',
     `Your working directory (${input.worktreePath}) is a clean, read-only checkout at commit ${input.baseSha}. Verify the draft against the code, then reply per the advisory contract: the first two lines must be "VERDICT: ..." and "OPEN OBJECTIONS: <integer>".`,
+    ...(input.profile === 'quick' ? [QUICK_ENGINEER_INSTRUCTION] : []),
     `${ASK_ARCHITECT_INSTRUCTION} A reply containing such a question does not converge.`
   ].join('\n');
 }

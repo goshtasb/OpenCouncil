@@ -30,6 +30,17 @@ test('CLI errors are one clean line with a non-zero exit, not a stack trace', ()
   assert.doesNotMatch(r.stderr + r.stdout, /\n\s+at /);
 });
 
+test('open prints only the session id on stdout, so SESSION=$(council open …) works', () => {
+  const repo = makeRepo();
+  const r = run(repo, 'open', 'my-slug', '--task', 'x', '--quick');
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /^\d{14}-my-slug\n$/, `stdout was: ${JSON.stringify(r.stdout)}`);
+  assert.match(r.stderr, /Session opened/);
+  const status = run(repo, 'status', r.stdout.trim());
+  assert.equal(status.status, 0, status.stderr);
+  assert.match(status.stdout, /"status": "OPEN"/);
+});
+
 test('CLI backlog add/list round-trip', () => {
   const repo = makeRepo();
   assert.equal(run(repo, 'backlog', 'add', 'Ship it', '-p', '2').status, 0);

@@ -18,6 +18,8 @@ council:
   execution_timeout_seconds: 3600   # Timeout per autonomous execution run (1 hour)
   execution_attempts: 3             # Chief Engineer runs per execution (resumes after Architect rulings or failed verification)
   signoff_revisions: 2              # Extra rounds granted to answer sign-off concerns once the Engineer has ratified
+  no_progress_rounds: 3             # Rounds without a drop in open objections before the Architect arbitrates early
+  profile: "full"                   # "quick": 4 rounds, tie-break from round 3, six-point review (`council init --quick`)
 
 # Council Seats & Model Providers
 # Providers: claude-code, grok-cli, antigravity (agy), gemini-cli, ollama

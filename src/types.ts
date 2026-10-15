@@ -86,6 +86,8 @@ export interface CouncilSessionMeta {
   parentSession?: string;
   continuesSession?: string;
   backlogItem?: string;
+  /** Profile this session was opened with; overrides council.profile from the config. */
+  profile?: 'full' | 'quick';
 }
 
 export interface CouncilConfig {
@@ -106,6 +108,10 @@ export interface CouncilConfig {
     execution_attempts: number;
     /** Extra rounds granted for resolving sign-off concerns after the Chief Engineer has converged. */
     signoff_revisions: number;
+    /** 'quick': fewer rounds, six-point review, shorter documents. 'full' (default): the complete 12-point council. */
+    profile?: 'full' | 'quick';
+    /** Consecutive rounds without a drop in open objections before the Chief Architect arbitrates early. */
+    no_progress_rounds?: number;
   };
   seats: {
     lead_pm: SeatConfig;
