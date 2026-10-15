@@ -1,0 +1,11 @@
+{
+  "name": "open-council",
+  "displayName": "Open Council",
+  "version": "0.2.0",
+  "description": "Three AI seats argue over your spec until they agree, you approve the PRD, then it ships as a tested, gated pull request. /open-council:council drives the whole loop.",
+  "author": { "name": "Ashkan Goshtasb", "url": "https://github.com/goshtasb" },
+  "homepage": "https://github.com/goshtasb/OpenCouncil",
+  "repository": "https://github.com/goshtasb/OpenCouncil",
+  "license": "MIT",
+  "keywords": ["council", "prd", "multi-model", "code-review", "deliberation", "pull-request", "verification"]
+}

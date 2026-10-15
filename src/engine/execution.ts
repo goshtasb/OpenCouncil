@@ -174,10 +174,15 @@ export class ExecutionEngine {
     const meta = this.sessionManager.loadMeta(sessionId);
     const branch: string = this.sessionManager.getStatus(sessionId).details.execBranch || `council/${meta.slug}`;
     const engineer = this.config.seats.chief_engineer;
+    const installArtifacts: string[] = this.sessionManager.getStatus(sessionId).details.installArtifacts || [];
     logger.council('CHIEF ENGINEER', `Autonomous execution attempt ${attempt}/${maxAttempts} in ${cwd}...`);
     const prompt = [
       'Implement the approved specification below to completion, following the execution contract.',
       `You are on branch ${branch} in an isolated clone. Commit your work to this branch with clear messages. Do not push and do not open a pull request: the harness does that after verifying your work.`,
+      // Observed: the Engineer committed a package-lock.json the install step had generated, adding a commit nobody asked for.
+      ...(installArtifacts.length > 0
+        ? [`The dependency install step, not you, created these untracked files; the harness ignores them when it checks for a clean tree. Leave them uncommitted: ${installArtifacts.map(line => line.replace(/^\S+\s+/, '')).join(', ')}.`]
+        : []),
       'Write reproduction tests before applying fixes.',
       'When fully finished, write DONE.md. If a rule you need is undefined, write BLOCKED.md containing `QUESTION FOR ARCHITECT: <question>` lines; the Chief Architect answers and you will be resumed.',
       '',
