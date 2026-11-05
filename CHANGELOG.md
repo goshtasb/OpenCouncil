@@ -5,6 +5,9 @@ versions follow [SemVer](https://semver.org/). Get notified of new versions with
 
 ## [Unreleased]
 
+### Added
+- `council backlog list --json` prints the backlog as a JSON array (`id`, `title`, `status`, `priority`, `session`; `session` is `null` until a session takes the item), and `[]` for an empty backlog, so scripts can read it ([#14](https://github.com/goshtasb/OpenCouncil/issues/14)).
+
 ## [0.2.0] — 2026-10-14
 
 The entry ticket drops from three CLIs to one, and the project ships through npm, the Claude Code plugin marketplace and the skills ecosystem.
