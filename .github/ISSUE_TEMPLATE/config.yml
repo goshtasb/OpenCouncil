@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Share a council run (good or bad)
+    url: https://github.com/goshtasb/OpenCouncil/discussions/categories/show-and-tell
+    about: Every run, stalled or shipped, helps measure the stall rate. Post the seats, rounds and outcome.
+  - name: Ask a question
+    url: https://github.com/goshtasb/OpenCouncil/discussions
+    about: Setup questions, "is this a good fit for my repo", and anything that isn't a bug.
+  - name: Report a security issue privately
+    url: https://github.com/goshtasb/OpenCouncil/security/advisories/new
+    about: A path to execution without approval, a false DONE, or an escape from the execution clone.

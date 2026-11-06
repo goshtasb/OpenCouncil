@@ -48,6 +48,8 @@ npx skills add goshtasb/OpenCouncil
 
 Node 18+, macOS or Linux. More options under [Other install methods](#-other-install-methods).
 
+**What it costs you:** a paid Claude Code plan is enough (solo mode). A council takes about 5 to 40 minutes and uses your plan's quota, not API keys. See [Honest limits](#-honest-limits) before your first run.
+
 ## ⏱️ Your first council in five minutes
 
 ```bash
@@ -281,6 +283,10 @@ npm ci
 npm run build
 npm test      # node:test suite with scripted seats; no model calls
 ```
+
+## 🤝 Contributing
+
+Start with [Your first contribution](CONTRIBUTING.md#your-first-contribution): report a run, pick a [`good first issue`](https://github.com/goshtasb/OpenCouncil/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22), or add your CLI as a seat. The test suite needs no API credit. Everyone taking part agrees to the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## 📄 License
 

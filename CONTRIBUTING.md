@@ -2,6 +2,22 @@
 
 Thanks for taking a look. This is a young project and the most useful contributions right now are provider adapters, verification gates, and evidence that the council behaves (or misbehaves) on real work.
 
+## Your first contribution
+
+Three ways in, from smallest to largest:
+
+1. **Report a run.** Ran a council, good or bad? Post the seats, rounds and outcome in [Discussions → Show and tell](https://github.com/goshtasb/OpenCouncil/discussions/categories/show-and-tell). It takes five minutes and it is how the stall rate gets measured.
+2. **Pick a [`good first issue`](https://github.com/goshtasb/OpenCouncil/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22).** Each one is small, names the files to touch, and needs no API credit: the test suite runs on scripted seats.
+3. **Add your CLI to the council.** See [Adding a provider adapter](#adding-a-provider-adapter) and the [`help wanted`](https://github.com/goshtasb/OpenCouncil/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22) issues.
+
+Comment on an issue before you start so two people don't build the same thing. Every issue, pull request and discussion gets a first reply within 48 hours.
+
+### AI-assisted contributions
+
+Welcome, on the same terms this project holds its own council to: you ran it, the tests pass, and you can explain every line in review. Say in the pull request which agent helped and what you checked yourself. Pull requests that claim checks that were not run are closed.
+
+Everyone taking part agrees to the [Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## Getting set up
 
 ```bash
@@ -9,7 +25,7 @@ git clone https://github.com/goshtasb/OpenCouncil.git
 cd OpenCouncil
 npm ci
 npm run build
-npm test            # 66 tests, no model calls, no network
+npm test            # 68 tests, no model calls, no network
 ```
 
 macOS or Linux, Node 18+. Windows is not supported: gates and project commands run through a POSIX shell (use WSL).
