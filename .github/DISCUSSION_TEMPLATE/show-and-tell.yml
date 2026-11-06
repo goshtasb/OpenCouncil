@@ -1,0 +1,86 @@
+title: "[Run] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        One post per council run, good or bad. Stalls and wrong answers are the most useful reports.
+        These fields are what the published stall rate is counted from, so please fill all the required ones.
+  - type: input
+    id: version
+    attributes:
+      label: Open Council version
+      description: "`council --version`"
+      placeholder: "0.2.1"
+    validations:
+      required: true
+  - type: dropdown
+    id: seats
+    attributes:
+      label: Seats
+      options:
+        - Solo (every seat on Claude Code)
+        - Full council (three different CLIs)
+        - Mixed (two CLIs)
+    validations:
+      required: true
+  - type: input
+    id: models
+    attributes:
+      label: Models per seat
+      placeholder: "Lead PM sonnet, Chief Engineer opus, Chief Architect sonnet"
+  - type: dropdown
+    id: profile
+    attributes:
+      label: Profile
+      options:
+        - Quick (at most 4 rounds)
+        - Standard
+    validations:
+      required: true
+  - type: textarea
+    id: task
+    attributes:
+      label: Task
+      description: One or two lines. Link the repo if it is public.
+    validations:
+      required: true
+  - type: dropdown
+    id: outcome
+    attributes:
+      label: Outcome
+      options:
+        - Signed off, gates passed, PR opened
+        - Signed off, gates failed (BLOCKED)
+        - Signed off, not run yet
+        - STALLED (no agreement within the round budget)
+        - Seat failure (a CLI errored or returned nothing)
+        - Other (say below)
+    validations:
+      required: true
+  - type: input
+    id: rounds
+    attributes:
+      label: Rounds
+      placeholder: "4"
+    validations:
+      required: true
+  - type: input
+    id: objections
+    attributes:
+      label: Objections raised in round 1
+      placeholder: "6"
+  - type: input
+    id: minutes
+    attributes:
+      label: Minutes from open to sign-off or stall
+      placeholder: "14"
+  - type: input
+    id: pr
+    attributes:
+      label: Pull request link, if one opened
+  - type: textarea
+    id: notes
+    attributes:
+      label: What went right or wrong
+      description: The objection that mattered most, a loop, a wrong sign-off, anything that surprised you.
