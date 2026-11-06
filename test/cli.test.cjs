@@ -48,6 +48,23 @@ test('CLI backlog add/list round-trip', () => {
   assert.equal(run(repo, 'backlog', 'add', 'Bad', '-p', '12').status, 1);
 });
 
+test('backlog list --json prints the items as a JSON array, and [] when empty', () => {
+  const repo = makeRepo();
+  const empty = run(repo, 'backlog', 'list', '--json');
+  assert.equal(empty.status, 0, empty.stderr);
+  assert.deepEqual(JSON.parse(empty.stdout), []);
+  assert.doesNotMatch(empty.stdout, /Backlog is empty/);
+
+  assert.equal(run(repo, 'backlog', 'add', 'Ship it', '-p', '2').status, 0);
+  assert.equal(run(repo, 'backlog', 'add', 'Then this', '-k', 'bug').status, 0);
+  const r = run(repo, 'backlog', 'list', '--json');
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(JSON.parse(r.stdout), [
+    { id: '001', title: 'Ship it', status: 'todo', priority: 2, session: null },
+    { id: '002', title: 'Then this', status: 'todo', priority: 5, session: null }
+  ]);
+});
+
 const writeConfig = (repo, yml) => {
   fs.mkdirSync(path.join(repo, '.council'), { recursive: true });
   fs.writeFileSync(path.join(repo, '.council', 'config.yml'), yml);

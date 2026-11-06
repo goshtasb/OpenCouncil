@@ -151,8 +151,14 @@ export function registerProjectCommands(program: Command, ctx: CliContext): void
   backlog
     .command('list')
     .description('List all backlog items')
-    .action(action(() => {
+    .option('--json', 'Print the items as a JSON array (id, title, status, priority, session)')
+    .action(action((options: { json?: boolean }) => {
       const items = new PipelineManager().listItems();
+      if (options.json) {
+        const rows = items.map(({ id, title, status, priority, session }) => ({ id, title, status, priority, session: session ?? null }));
+        console.log(JSON.stringify(rows, null, 2));
+        return;
+      }
       if (items.length === 0) {
         console.log('Backlog is empty.');
         return;
