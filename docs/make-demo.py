@@ -34,7 +34,6 @@ LINES = [
     (22.4, "✔ Session successfully APPROVED.   <- the only human step", "ok"),
     (23.6, "$ council run 20260917213447-gates-command", "cmd"),
     (24.8, "[CHIEF ENGINEER] Autonomous execution attempt 1/3...", "eng"),
-    (26.6, "[HARNESS] Merged origin/main before verification.", "harness"),
     (27.6, "[HARNESS] Gate build: npm run build", "harness"),
     (28.4, "✔ Gate build passed (0.6s)", "ok"),
     (29.2, "[HARNESS] Gate test: npm test", "harness"),
