@@ -9,6 +9,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Node Version](https://img.shields.io/badge/node-%3E%3D18.0.0-blue.svg)](https://nodejs.org/)
 
+**[Watch a real council, every objection and sign-off →](docs/replays/README.md)**
+
 [Install](#-install-in-one-line) •
 [Five-minute run](#-your-first-council-in-five-minutes) •
 [How it is different](#-how-is-this-different-from-an-llm-council) •
