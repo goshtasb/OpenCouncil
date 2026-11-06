@@ -5,8 +5,17 @@ versions follow [SemVer](https://semver.org/). Get notified of new versions with
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-11-06
+
+A small release, and the first with outside contributors. Thanks to [@O1sumitkumar](https://github.com/O1sumitkumar) and [@Doomguy-BFG9000](https://github.com/Doomguy-BFG9000).
+
 ### Added
 - `council backlog list --json` prints the backlog as a JSON array (`id`, `title`, `status`, `priority`, `session`; `session` is `null` until a session takes the item), and `[]` for an empty backlog, so scripts can read it ([#14](https://github.com/goshtasb/OpenCouncil/issues/14)).
+- `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), a "Your first contribution" path and an AI-assisted contributions policy in `CONTRIBUTING.md`, and issue routing that sends questions and run reports to Discussions ([#13](https://github.com/goshtasb/OpenCouncil/pull/13)).
+
+### Changed
+- On native Windows every `council` command now stops at once with a message pointing to WSL, instead of failing later inside a gate or project command ([#15](https://github.com/goshtasb/OpenCouncil/issues/15)).
+- README states what a run costs right under the install line.
 
 ## [0.2.0] — 2026-10-14
 
@@ -73,6 +82,7 @@ First public release.
 - Documents a seat saves instead of printing are recovered.
 - The zero-tool Architect seat stays tool-free across providers.
 
-[Unreleased]: https://github.com/goshtasb/OpenCouncil/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/goshtasb/OpenCouncil/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/goshtasb/OpenCouncil/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/goshtasb/OpenCouncil/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/goshtasb/OpenCouncil/releases/tag/v0.1.0

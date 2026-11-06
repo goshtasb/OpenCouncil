@@ -241,7 +241,7 @@ Pushing and PR creation use `git` and the `gh` CLI, so `origin` must be a GitHub
 
 ```bash
 npm install -g open-council-cli                # global install from npm; the commands are `council` and `open-council`
-npm install -g https://github.com/goshtasb/OpenCouncil/releases/download/v0.2.0/open-council-cli-0.2.0.tgz   # release tarball, no registry
+npm install -g https://github.com/goshtasb/OpenCouncil/releases/download/v0.2.1/open-council-cli-0.2.1.tgz   # release tarball, no registry
 git clone https://github.com/goshtasb/OpenCouncil && cd OpenCouncil && npm ci && npm run build   # from source; see CONTRIBUTING.md
 ```
 
