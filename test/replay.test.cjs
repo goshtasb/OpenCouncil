@@ -8,7 +8,11 @@ const { makeRepo, home } = require('./helpers.cjs');
 const lib = require('../dist/index.js');
 
 const bin = path.join(__dirname, '..', 'bin', 'council.js');
-const run = (cwd, ...args) => spawnSync(process.execPath, [bin, ...args], { cwd, env: { ...process.env, COUNCIL_HOME: home }, encoding: 'utf8' });
+// The CLI runs as if piped. node --test sets FORCE_COLOR for test files when its own output is a terminal
+// (as under `npm test` or `npm publish` in a shell), so drop every colour switch the child would inherit.
+const COLOR_VARS = ['FORCE_COLOR', 'NO_COLOR', 'CLICOLOR_FORCE', 'CLICOLOR', 'COLOR'];
+const pipedEnv = (env = process.env) => Object.fromEntries(Object.entries({ ...env, COUNCIL_HOME: home }).filter(([k]) => !COLOR_VARS.includes(k)));
+const run = (cwd, ...args) => spawnSync(process.execPath, [bin, ...args], { cwd, env: pipedEnv(), encoding: 'utf8' });
 // A real recorded session (run 1 of the ten solo runs, machine paths scrubbed).
 const demoDir = path.join(__dirname, 'fixtures', 'slugify-empty-and-accents');
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'council-replay-'));
@@ -21,6 +25,16 @@ function copyTree(src, dest) {
     else fs.copyFileSync(from, path.join(dest, name));
   }
 }
+
+test('the replay test runs the CLI uncoloured even when the test runner forces colour', () => {
+  const env = pipedEnv({ ...process.env, FORCE_COLOR: '1', CLICOLOR_FORCE: '1' });
+  assert.equal(env.FORCE_COLOR, undefined);
+  const r = spawnSync(process.execPath, [bin, 'replay', demoDir, '--play'], { cwd: tmp(), env, encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.doesNotMatch(r.stdout, /\u001b\[/);
+  const forced = spawnSync(process.execPath, [bin, 'replay', demoDir, '--play'], { cwd: tmp(), env: { ...env, FORCE_COLOR: '1' }, encoding: 'utf8' });
+  assert.match(forced.stdout, /\u001b\[/, 'FORCE_COLOR alone turns colour on, which is why the helper drops it');
+});
 
 test('replay --play prints a recorded run at once when piped: task, the Node 22 objection, sign-off, gate and outcome', () => {
   const r = run(tmp(), 'replay', demoDir, '--play');
