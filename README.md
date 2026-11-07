@@ -119,6 +119,14 @@ Found one of these the hard way? [Tell us](https://github.com/goshtasb/OpenCounc
 
 **Coming next:** the Charm, a phone voice companion for the council. See the [roadmap](ROADMAP.md).
 
+## 🔒 What it runs and what it sends
+
+Open Council runs on your machine. The Claude Code plugin adds one skill, `/open-council:council`, which runs the `council` CLI (or `npx open-council-cli` if it isn't installed), plus `git` and `gh`.
+
+- Your task and the code the seats read go to the AI CLIs you assigned to the seats: Claude Code, plus any other provider CLI from [Providers](#-providers) you set up. Each CLI sends it to its own provider under your own account. In solo mode only Claude Code is used. An Ollama seat talks to your local Ollama.
+- Nothing is written to your repository before you approve the PRD. After that it commits in an isolated clone, pushes a branch and opens a pull request on your repository's remote with `gh`.
+- Session records stay on your machine under `~/.council`. The CLI has no telemetry and calls no server of its own. `council office` serves its dashboard on 127.0.0.1 only.
+
 ## 💡 How it works
 
 One decision reaches you: approve the PRD, or don't. Nothing is written before that.
