@@ -101,7 +101,9 @@ test('the review page and Markdown lead with what the council found and the shar
 test('runReview argues over an uncommitted change and writes both pages without touching the repo', async () => {
   const ctx = setup({ council: { max_rounds: 3, tiebreak_round: 2 } });
   fs.writeFileSync(path.join(ctx.repo, 'login.js'), 'export const login = () => true;\n');
-  const before = git(ctx.repo, 'status', '--porcelain');
+  fs.writeFileSync(path.join(ctx.repo, '.env'), 'API_KEY=do-not-send\n');
+  const state = () => [git(ctx.repo, 'status', '--porcelain'), git(ctx.repo, 'for-each-ref'), git(ctx.repo, 'worktree', 'list')].join('\n---\n');
+  const before = state();
   ctx.adapters.pm.responses.push(PLAN(1), revision(2), LEAD_OK);
   ctx.adapters.eng.responses.push(OBJECT, SHIP);
   ctx.adapters.arch.responses.push(SIGNOFF);
@@ -109,13 +111,15 @@ test('runReview argues over an uncommitted change and writes both pages without 
   const result = await lib.runReview(ctx.repo, { config: ctx.config, sessions: ctx.sessions, pipeline: ctx.pipeline, onSession: (id, mode, change) => { seen = { id, mode, files: change.files }; } });
   assert.equal(result.outcome, 'AWAITING_APPROVAL');
   assert.deepEqual(seen, { id: result.sessionId, mode: 'uncommitted', files: ['login.js'] });
+  assert.doesNotMatch(ctx.adapters.pm.calls[0].prompt, /do-not-send/, 'a file that looks like a secret never reaches a seat');
+  assert.deepEqual(lib.collectChange(ctx.repo).withheld, ['.env']);
   assert.match(ctx.adapters.pm.calls[0].prompt, /\+export const login = \(\) => true;/, 'the diff reaches the seats');
   assert.equal(result.top.length, 1);
   assert.equal(result.top[0].headline, 'Missing test (README.md:1).');
   assert.equal(result.top[0].location, 'README.md:1');
   assert.match(fs.readFileSync(result.htmlPath, 'utf8'), /What the council found/);
   assert.match(fs.readFileSync(result.mdPath, 'utf8'), /Missing test/);
-  assert.equal(git(ctx.repo, 'status', '--porcelain'), before, 'the repo is exactly as it was');
+  assert.equal(state(), before, 'status, refs and worktrees are exactly as they were');
 });
 
 test('runReview with a task reviews the plan; with nothing to review or a huge diff it says what to do', async () => {
@@ -151,4 +155,43 @@ test('council review outside a git repo, or with no AI CLI on PATH, is one clean
   assert.match(b.stderr, /No AI CLI was found on PATH/);
   assert.doesNotMatch(b.stderr, /\n\s+at /);
   assert.ok(!fs.existsSync(path.join(repo, '.council')));
+});
+
+test('a review uses a worktree of its own, so a session already open on the repo keeps its checkout', async () => {
+  const ctx = setup();
+  ctx.adapters.pm.responses.push(PLAN(1), LEAD_OK);
+  ctx.adapters.eng.responses.push(SHIP);
+  ctx.adapters.arch.responses.push(SIGNOFF);
+  const first = await new lib.CouncilEngine(ctx.config, ctx.sessions, ctx.pipeline).open(ctx.repo, 'running', { task: 'x' });
+  const shared = ctx.sessions.loadMeta(first).worktreePath;
+  fs.writeFileSync(path.join(shared, 'seat-scratch.txt'), 'a seat is reading here');
+  git(ctx.repo, 'commit', '-q', '--allow-empty', '-m', 'moves HEAD');
+  await lib.runReview(ctx.repo, { task: 'review something', config: ctx.config, sessions: ctx.sessions, pipeline: ctx.pipeline });
+  assert.ok(fs.existsSync(path.join(shared, 'seat-scratch.txt')), 'the running session\'s worktree was not reset');
+  assert.doesNotMatch(git(ctx.repo, 'worktree', 'list'), /review-worktrees/);
+});
+
+test('--rounds takes 2 to 4 and nothing else', async () => {
+  const repo = makeRepo();
+  const found = new Set(['claude-code']);
+  assert.equal((await lib.reviewConfig(repo, 2, found)).config.council.max_rounds, 2);
+  assert.equal((await lib.reviewConfig(repo, 4, found)).config.council.max_rounds, 4);
+  for (const bad of [1, 5, 10, NaN, 2.5]) await assert.rejects(lib.reviewConfig(repo, bad, found), /--rounds takes a whole number from 2 to 4/);
+});
+
+test('the old council review <session> still runs the Chief Architect review and says it moved', () => {
+  const repo = makeRepo();
+  const env = { ...process.env, COUNCIL_HOME: home };
+  const sessions = path.join(lib.projectStateDir(lib.resolveRepoRoot(repo)), 'sessions');
+  const id = '20261106190450-slugify-empty-and-accents';
+  require('fs').cpSync(fixture, path.join(sessions, id), { recursive: true });
+  // The fixture session is BLOCKED, so both forms stop before any seat is called; what matters is the routing.
+  const oldForm = spawnSync(process.execPath, [bin, 'review', id], { cwd: repo, env, encoding: 'utf8' });
+  const newForm = spawnSync(process.execPath, [bin, 'architect-review', id], { cwd: repo, env, encoding: 'utf8' });
+  assert.match(oldForm.stderr, /`council review <session>` is now `council architect-review <session>`.*0\.4\.0/);
+  assert.equal(oldForm.status, 1);
+  assert.equal(newForm.status, 1);
+  assert.match(newForm.stderr, /Cannot review: session .* is 'BLOCKED'/);
+  assert.equal(oldForm.stdout, newForm.stdout);
+  assert.equal(oldForm.stderr.replace(/^.*architect-review <session>`.*\n/m, ''), newForm.stderr);
 });

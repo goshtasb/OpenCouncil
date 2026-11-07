@@ -205,3 +205,6 @@ export function describeBlock(reason: string): string {
   const first = reason.split('\n').find(l => l.trim()) || reason;
   return first.length > 200 ? first.slice(0, 197) + '...' : first;
 }
+
+/** One objection the review page leads with. */
+export interface TopObjection { round: number; seat: 'Chief Engineer' | 'Chief Architect'; headline: string; evidence: string; location?: string }

@@ -1,6 +1,5 @@
-import { SessionReplay } from './session-replay.js';
+import { SessionReplay, TopObjection } from './session-replay.js';
 import { escapeHtml, renderMarkdown } from './markdown.js';
-import type { TopObjection } from '../review/quick-review.js';
 
 const SEATS = {
   pm: { name: 'Lead PM', cls: 'pm' },

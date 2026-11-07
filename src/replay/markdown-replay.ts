@@ -1,5 +1,4 @@
-import { SessionReplay } from './session-replay.js';
-import type { TopObjection } from '../review/quick-review.js';
+import { SessionReplay, TopObjection } from './session-replay.js';
 
 const quote = (text: string) => text.trim().split('\n').map(l => (l.trim() ? `> ${l}` : '>')).join('\n');
 

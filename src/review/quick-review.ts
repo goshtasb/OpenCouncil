@@ -4,18 +4,23 @@ import { spawnSync } from 'child_process';
 import { CouncilConfig } from '../types.js';
 import { DEFAULT_CONFIG, findConfigFile, loadConfig } from '../config.js';
 import { PROVIDER_FIXES, SeatsPlan, detectProviders, planSeats } from '../setup.js';
-import { SessionReplay, loadSessionReplay, objectionHeadlines } from '../replay/session-replay.js';
+import { SessionReplay, TopObjection, loadSessionReplay, objectionHeadlines } from '../replay/session-replay.js';
 import { renderReplayHtml } from '../replay/html.js';
 import { renderReplayMarkdown } from '../replay/markdown-replay.js';
 import { SessionManager } from '../engine/session.js';
 import { PipelineManager } from '../engine/pipeline.js';
 import { CouncilEngine } from '../engine/council.js';
 import { DeliberationEngine } from '../engine/deliberation.js';
+import { projectStateDir } from '../utils/paths.js';
 
 /** Round budget for `council review`: short enough to finish in minutes, long enough for one revision. */
 export const REVIEW_ROUNDS = 3;
+export const REVIEW_MIN_ROUNDS = 2;
+export const REVIEW_MAX_ROUNDS = 4;
 /** Above this the diff is too big to argue about usefully in one sitting. */
 export const MAX_REVIEW_DIFF_BYTES = 120_000;
+/** Untracked files that look like secrets are never sent to a seat. */
+export const SECRET_FILE = /(^|\/)(\.env(\..*)?|.*\.(pem|key|p12|pfx|keystore|jks)|id_(rsa|dsa|ecdsa|ed25519)(\.pub)?|\.npmrc|\.netrc|credentials(\.json)?|secrets?\.(json|ya?ml|toml))$/i;
 
 function git(cwd: string, args: string[]): { ok: boolean; out: string } {
   const r = spawnSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
@@ -69,7 +74,10 @@ export async function reviewConfig(repo: string, rounds = REVIEW_ROUNDS, found?:
     base.project = { ...base.project, install_command: gates.install, test_command: gates.test, lint_command: gates.lint };
     config = base;
   }
-  const max = Math.max(2, Math.floor(rounds));
+  if (!Number.isInteger(rounds) || rounds < REVIEW_MIN_ROUNDS || rounds > REVIEW_MAX_ROUNDS) {
+    throw new Error(`--rounds takes a whole number from ${REVIEW_MIN_ROUNDS} to ${REVIEW_MAX_ROUNDS} (the quick profile's limit).`);
+  }
+  const max = rounds;
   config.council = {
     ...config.council,
     profile: 'quick',
@@ -81,7 +89,7 @@ export async function reviewConfig(repo: string, rounds = REVIEW_ROUNDS, found?:
   return { config, plan, gates };
 }
 
-export interface ReviewChange { kind: 'uncommitted' | 'branch'; diff: string; base: string; files: string[] }
+export interface ReviewChange { kind: 'uncommitted' | 'branch'; diff: string; base: string; files: string[]; withheld: string[] }
 
 function defaultBase(repo: string): string | null {
   const head = git(repo, ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD']);
@@ -94,10 +102,20 @@ function defaultBase(repo: string): string | null {
  * The change to review: uncommitted work if there is any (tracked edits plus new untracked files),
  * otherwise this branch's commits since it left the base branch. Returns null when there is nothing.
  */
+const tooBig = (bytes: number, files: number) =>
+  `The change is ${Math.round(bytes / 1024)} KB across ${files} file${files === 1 ? '' : 's'}, more than one review can argue about well (${MAX_REVIEW_DIFF_BYTES / 1000} KB). Commit part of it and review the rest, or pass --base with a closer ref.`;
+
 export function collectChange(repo: string, base?: string): ReviewChange | null {
   if (!base) {
     const tracked = git(repo, ['diff', 'HEAD', '--no-color']).out;
-    const untracked = git(repo, ['ls-files', '--others', '--exclude-standard']).out.split('\n').filter(Boolean);
+    const others = git(repo, ['ls-files', '--others', '--exclude-standard']).out.split('\n').filter(Boolean);
+    const withheld = others.filter(f => SECRET_FILE.test(f));
+    const untracked = others.filter(f => !SECRET_FILE.test(f));
+    let size = Buffer.byteLength(tracked);
+    for (const file of untracked) {
+      try { size += fs.statSync(path.join(repo, file)).size; } catch { /* vanished: skipped below */ }
+    }
+    if (size > MAX_REVIEW_DIFF_BYTES) throw new Error(tooBig(size, untracked.length + (tracked ? 1 : 0)));
     let extra = '';
     for (const file of untracked) {
       const r = spawnSync('git', ['diff', '--no-color', '--no-index', '--', '/dev/null', file], { cwd: repo, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
@@ -106,7 +124,7 @@ export function collectChange(repo: string, base?: string): ReviewChange | null 
     const diff = tracked + extra;
     if (diff.trim()) {
       const files = git(repo, ['diff', 'HEAD', '--name-only']).out.split('\n').filter(Boolean).concat(untracked);
-      return { kind: 'uncommitted', diff, base: 'HEAD', files };
+      return { kind: 'uncommitted', diff, base: 'HEAD', files, withheld };
     }
   }
   const ref = base || defaultBase(repo);
@@ -115,7 +133,7 @@ export function collectChange(repo: string, base?: string): ReviewChange | null 
   const diff = git(repo, ['diff', '--no-color', `${ref}...HEAD`]).out;
   if (!diff.trim()) return null;
   const files = git(repo, ['diff', '--name-only', `${ref}...HEAD`]).out.split('\n').filter(Boolean);
-  return { kind: 'branch', diff, base: ref, files };
+  return { kind: 'branch', diff, base: ref, files, withheld: [] };
 }
 
 /** The task a change review gives the council. The diff is quoted whole; the seats read the repository for the rest. */
@@ -145,7 +163,7 @@ export function reviewSlug(repo: string, task?: string): string {
   return (task ? `review-${slug}` : slug).slice(0, 48).replace(/-+$/, '') || 'review';
 }
 
-export interface TopObjection { round: number; seat: 'Chief Engineer' | 'Chief Architect'; headline: string; evidence: string; location?: string }
+
 
 /** Numbered objections with a bold headline; failing that, plain numbered items whose first sentence is the headline. */
 function engineerObjections(reply: string): { headline: string; evidence: string }[] {
@@ -231,6 +249,12 @@ export interface ReviewResult {
   mdPath: string;
 }
 
+function removeWorktree(repo: string, worktreePath: string): void {
+  git(repo, ['worktree', 'remove', '--force', worktreePath]);
+  fs.rmSync(worktreePath, { recursive: true, force: true });
+  git(repo, ['worktree', 'prune']);
+}
+
 /**
  * One review: open a session on the change (or the one-line task), let the council argue it out, and write the
  * replay as HTML and Markdown into the session directory. Nothing in the repository is written or executed;
@@ -245,17 +269,23 @@ export async function runReview(repo: string, options: ReviewOptions = {}): Prom
     if (!change) {
       throw new Error('Nothing to review: no uncommitted changes and no commits ahead of the base branch. Pass a task instead: council review "add rate limiting to the login route"');
     }
-    if (Buffer.byteLength(change.diff) > MAX_REVIEW_DIFF_BYTES) {
-      throw new Error(`The change is ${Math.round(Buffer.byteLength(change.diff) / 1024)} KB of diff across ${change.files.length} files, more than one review can argue about well (${MAX_REVIEW_DIFF_BYTES / 1000} KB). Commit part of it and review the rest, or pass --base with a closer ref.`);
-    }
+    if (Buffer.byteLength(change.diff) > MAX_REVIEW_DIFF_BYTES) throw new Error(tooBig(Buffer.byteLength(change.diff), change.files.length));
     task = changeReviewTask(change);
   }
   const config = options.config || (await reviewConfig(repo, options.rounds)).config;
   const sessions = options.sessions || new SessionManager();
   const council = new CouncilEngine(config, sessions, options.pipeline);
-  const sessionId = await council.open(repo, reviewSlug(repo, options.task), { task, profile: 'quick' });
-  options.onSession?.(sessionId, change ? change.kind : 'task', change);
-  const result = await new DeliberationEngine(config, sessions, options.pipeline).run(sessionId);
+  // A worktree of its own, so a review never resets the one a running session reads, and nothing stays registered after.
+  const worktreePath = path.join(projectStateDir(path.resolve(repo)), 'review-worktrees', `${Date.now()}-${process.pid}`);
+  let result: Awaited<ReturnType<DeliberationEngine['run']>>;
+  let sessionId: string;
+  try {
+    sessionId = await council.open(repo, reviewSlug(repo, options.task), { task, profile: 'quick', worktreePath });
+    options.onSession?.(sessionId, change ? change.kind : 'task', change);
+    result = await new DeliberationEngine(config, sessions, options.pipeline).run(sessionId);
+  } finally {
+    removeWorktree(repo, worktreePath);
+  }
   const dir = sessions.getSessionPath(sessionId);
   const replay = loadSessionReplay(dir);
   const top = topObjections(replay);

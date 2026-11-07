@@ -22,6 +22,8 @@ export interface OpenSessionOptions {
   backlogItem?: string;
   /** 'quick' caps this session at the quick-profile round budget whatever the project config says. */
   profile?: Profile;
+  /** A worktree of the session's own instead of the shared research worktree (used by `council review`). */
+  worktreePath?: string;
 }
 
 export class CouncilEngine {
@@ -56,7 +58,7 @@ export class CouncilEngine {
     const baseSha = await getHeadSha(absRepo);
 
     // Pristine research worktree, one per repository (WIP limit keeps sessions from sharing it concurrently)
-    const worktreePath = path.join(projectStateDir(absRepo), 'worktree');
+    const worktreePath = options.worktreePath || path.join(projectStateDir(absRepo), 'worktree');
     await createWorktree(absRepo, worktreePath, baseSha);
 
     const profile: Profile = options.profile || this.config.council.profile || 'full';
