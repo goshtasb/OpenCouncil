@@ -8,6 +8,8 @@ import { CliContext } from './commands/shared.js';
 import { registerProjectCommands } from './commands/project.js';
 import { registerCouncilCommands } from './commands/council.js';
 import { registerExecutionCommands } from './commands/execution.js';
+import { registerReplayCommands } from './commands/replay.js';
+import { registerReviewCommands } from './commands/review.js';
 
 const repoRoot = resolveRepoRoot();
 
@@ -32,5 +34,7 @@ program
 registerProjectCommands(program, context);
 registerCouncilCommands(program, context);
 registerExecutionCommands(program, context);
+registerReplayCommands(program, context);
+registerReviewCommands(program, context);
 
 program.parseAsync(process.argv);

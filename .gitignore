@@ -26,3 +26,6 @@ dist/
 
 # launch drafts (posts, DMs) are for the maintainer, not for the repository
 /launch/
+
+# Recorded sessions used as test fixtures keep their timeline.
+!test/fixtures/**/HISTORY.log

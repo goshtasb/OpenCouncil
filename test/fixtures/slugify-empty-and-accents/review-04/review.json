@@ -1,0 +1,10 @@
+{
+  "round": 4,
+  "verdict": "SIGN-OFF",
+  "requiredConcerns": 0,
+  "advisoryConcerns": 0,
+  "concerns": [],
+  "summary": "All four earlier concerns are resolved and the revision adds none; the design is a minimal, reversible, red-first-tested pure-function change, and the lack of CI is out of scope.",
+  "planSha256": "47d99f766e0e840a5871b1220c214c2713688498add521700ff206585be5d4f1",
+  "replySha256": "7f5101f8f441d6ce815f99f660c4b462b9ee24b63ccdab084bbc39fc5c5ff900"
+}

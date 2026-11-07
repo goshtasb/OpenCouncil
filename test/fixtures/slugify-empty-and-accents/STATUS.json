@@ -1,0 +1,39 @@
+{
+  "status": "BLOCKED",
+  "updatedAt": "2026-11-06T19:12:45.022Z",
+  "details": {
+    "prdSha256": "47d99f766e0e840a5871b1220c214c2713688498add521700ff206585be5d4f1",
+    "rounds": 4,
+    "deliverable": "~/.council/projects/playground-19507a48/sessions/20261106190450-slugify-empty-and-accents/brief-and-prd.md",
+    "architectVerdict": "SIGN-OFF",
+    "signedOffBy": [
+      "chief_engineer",
+      "chief_architect",
+      "lead_pm"
+    ],
+    "approvedAt": "2026-11-06T19:11:28.058Z",
+    "approvalMode": "typed",
+    "execWorktree": "~/.council/projects/playground-19507a48/exec/20261106190450-slugify-empty-and-accents",
+    "execBranch": "council/slugify-empty-and-accents",
+    "packetFile": "~/.council/projects/playground-19507a48/exec/20261106190450-slugify-empty-and-accents/COUNCIL_PACKET.md",
+    "installArtifacts": [
+      "?? package-lock.json"
+    ],
+    "verification": {
+      "passed": true,
+      "headSha": "1dab67c2458ac9e709de8ba0c6153c4522916aae",
+      "gates": [
+        {
+          "name": "test",
+          "command": "npm test",
+          "required": true,
+          "standard": "12-point #4 Testing & Release Engineering",
+          "exitCode": 0,
+          "passed": true,
+          "durationMs": 181
+        }
+      ]
+    },
+    "blockedReason": "Push or pull request creation failed: Command failed with exit code 4: gh pr create --base main --head council/slugify-empty-and-accents --title [Council] slugify-empty-and-accents --body Automated PR generated from Open Council session 20261106190450-slugify-empty-and-accents.\n\nApproved PRD sha256: 47d99f766e0e840a5871b1220c214c2713688498add521700ff206585be5d4f1\nSigned off by: chief_engineer, chief_architect, lead_pm\n\n## Harness verification\n- PASS `test` — `npm test` (0.2s) — 12-point #4 Testing & Release Engineering\nTo get started with GitHub CLI, please run:  gh auth login\nAlternatively, populate the GH_TOKEN environment variable with a GitHub API authentication token."
+  }
+}

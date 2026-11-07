@@ -5,6 +5,13 @@ versions follow [SemVer](https://semver.org/). Get notified of new versions with
 
 ## [Unreleased]
 
+### Added
+- `council review` has the council tear into your own change, with no setup. Run `npx open-council-cli review` in any git repository with Claude Code installed. It reviews your uncommitted changes, or the branch since its base (`--base <ref>`), or a one-line plan (`council review "add rate limiting to login"`). Seats come from the AI CLIs on your PATH and the gates from your project files; nothing is written to the repository and nothing is executed. It runs the quick profile with 2 rounds (`--rounds`, up to 4), about four minutes and writes `review.html` and `review.md`, which lead with the strongest file:line objections and a line you can share. Before the seats start it lists every file whose diff they will see; untracked files that look like secrets (`.env*`, `*.pem`, `*.key`, `id_rsa` and the like) are never sent. Each review uses a worktree of its own and removes it when it ends, so it never disturbs a session already running in the same repo.
+- `council replay <session>` writes any session (by id or by directory) as one self-contained HTML page: every seat reply rendered from its saved file, the timeline, rulings, the signed-off PRD, gate output, commits and the diff, with local paths shortened. The page has no scripts and loads nothing from the network. `--play` plays the session back in the terminal instead.
+
+### Changed
+- `council review <session>` (the Chief Architect's review of one session) is now `council architect-review <session>`. The old form still works, prints a notice on stderr, and goes away in 0.4.0.
+
 ## [0.2.1] — 2026-11-06
 
 A small release, and the first with outside contributors. Thanks to [@O1sumitkumar](https://github.com/O1sumitkumar) and [@Doomguy-BFG9000](https://github.com/Doomguy-BFG9000).

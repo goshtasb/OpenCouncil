@@ -1,0 +1,14 @@
+{
+  "id": "20261106190450-slugify-empty-and-accents",
+  "slug": "slugify-empty-and-accents",
+  "repoPath": "~/code/slugify-playground",
+  "worktreePath": "~/.council/projects/playground-19507a48/worktree",
+  "baseRef": "main",
+  "baseSha": "a1908f9dbb82a796413470f325b0228639e11fb3",
+  "maxRounds": 4,
+  "signoffRevisions": 1,
+  "tiebreakRound": 3,
+  "createdAt": "2026-11-06T19:04:50.448Z",
+  "backlogItem": "001",
+  "profile": "quick"
+}

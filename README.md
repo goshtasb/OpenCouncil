@@ -9,10 +9,19 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Node Version](https://img.shields.io/badge/node-%3E%3D18.0.0-blue.svg)](https://nodejs.org/)
 
-**[Watch a real council, every objection and sign-off →](docs/replays/README.md)**
+**Point it at your own code first.** In any git repo with Claude Code installed:
 
+```bash
+npx open-council-cli review
+```
+
+**[See what it found in its own code →](docs/replays/council-review-reviews-itself.md)**
+
+[Review your change](#-have-it-tear-into-your-change) •
 [Install](#-install-in-one-line) •
-[Five-minute run](#-your-first-council-in-five-minutes) •
+[Step-by-step guide](#-step-by-step-guide-the-full-council) •
+[Share a run](#-share-a-run) •
+[Troubleshooting](#-troubleshooting) •
 [How it is different](#-how-is-this-different-from-an-llm-council) •
 [Showcases](#-showcases) •
 [Honest limits](#-honest-limits) •
@@ -25,6 +34,45 @@
 <sub>`council office`, replaying the seat states of the session that built <a href="https://github.com/goshtasb/OpenCouncil/pull/1">PR #1</a>. The seats take turns; the human only approves.</sub>
 
 </div>
+
+## 🔎 Have it tear into your change
+
+The fastest way to see what Open Council does is to let it review something you were about to ship. No config, no `.council/` folder, nothing written to your repository and nothing executed.
+
+```bash
+cd your-repo
+npx open-council-cli review                                          # your uncommitted change
+npx open-council-cli review --base origin/main                       # or this branch since main
+npx open-council-cli review "add rate limiting to the login route"   # or a plan, before you write any code
+```
+
+**You need:** Node 18 or newer, [Claude Code](https://claude.com/claude-code) installed and signed in (run `claude` once), and macOS, Linux or WSL. A review runs on your Claude plan, not an API key, and uses its quota like any other Claude Code session. At the default two rounds it takes about four minutes.
+
+**What happens:**
+
+1. It works out what to review. With no arguments, that is your uncommitted change, untracked files included. With nothing uncommitted, it is your branch's commits since `origin/main` (or `main`/`master`). Pass `--base <ref>` to pick the base yourself, or a sentence to review a plan instead of a diff.
+2. It prints every file whose diff the seats will see, before they start. Untracked files that look like secrets (`.env*`, `*.pem`, `*.key`, `id_rsa` and the like) are never sent, and it names the ones it held back.
+3. Three seats argue over it. The **Lead PM** writes down what the change claims to do. The **Chief Engineer** checks every claim against your code and objects with `file:line`. The **Chief Architect** rules on whether it should ship. The seats read your project from a temporary checkout that is removed when the review ends.
+4. It prints the strongest objections and a line you can paste anywhere, and writes two files: `review.html`, one self-contained page, and `review.md`, ready for a gist or a pull request comment. The page opens in your browser when you run it in a terminal.
+
+The seats are whichever AI CLIs you have. Claude Code alone is enough: every seat then runs on it, with a different model, persona and tool access per seat. The test and lint commands are read from your `package.json`, `Cargo.toml`, `go.mod`, `pyproject.toml`, `setup.py` or `requirements.txt` so the seats know how the project is checked; a review never runs them.
+
+| Option | What it does |
+| :--- | :--- |
+| `"<plan>"` | Review a one-line plan instead of a diff |
+| `--base <ref>` | Review the commits ahead of `<ref>` instead of uncommitted changes |
+| `--rounds <n>` | Round budget, 2 to 4 (default 2). Round 1 carries most of the code objections |
+| `--gist` | Also put `review.md` in a secret GitHub gist with your `gh` CLI and print the link |
+| `-o, --out <dir>` | Also copy `review.html` and `review.md` into `<dir>` |
+| `--no-open` | Don't open the page in a browser |
+
+**Sharing it:** `--gist` gives you a link in one step. Otherwise paste `review.md` into a gist, an issue or a PR comment, or send `review.html` as is: it has no scripts and loads nothing from the network. Read it first; it quotes your diff.
+
+The first change it reviewed was its own. In round 1 the Chief Engineer found that a review could reset the checkout under another session running in the same repo, left that checkout registered afterwards, and sent untracked files, `.env` included, to the providers without a word. All five objections were fixed before it shipped. [Read the whole review](docs/replays/council-review-reviews-itself.md).
+
+![council review playing back in the terminal: the task, each round's objections, and what the council found](docs/demo-terminal.gif)
+
+<sub>That review, played back with `council replay <session> --play`.</sub>
 
 ## ⚡ Install in one line
 
@@ -50,27 +98,106 @@ npx skills add goshtasb/OpenCouncil
 
 Node 18+, macOS or Linux. More options under [Other install methods](#-other-install-methods).
 
-**What it costs you:** a paid Claude Code plan is enough (solo mode). A council takes about 5 to 40 minutes and uses your plan's quota, not API keys. See [Honest limits](#-honest-limits) before your first run.
+**What it costs you:** a paid Claude Code plan is enough (solo mode). A review takes about four minutes; a full council about 5 to 40. Both use your plan's quota, not API keys. See [Honest limits](#-honest-limits) before your first run.
 
-## ⏱️ Your first council in five minutes
+## 📘 Step-by-step guide: the full council
+
+`council review` stops at the argument. The full council goes all the way: the seats agree on a PRD, you approve it, the Chief Engineer builds it in an isolated clone, your gates run, and a pull request opens. Nothing is written to your repository before you approve.
+
+### 1. Set up the repository
 
 ```bash
 cd /path/to/your/repo
-npx open-council-cli init --quick                       # solo mode if only Claude Code is installed
-council doctor
-council backlog add "Return 404 instead of 500 for unknown slugs" --priority 1
-SESSION=$(council open unknown-slug-404 --item 001)
-council deliberate $SESSION                         # quick profile: at most 4 rounds
+npx open-council-cli init --quick   # writes .council/; solo mode if Claude Code is your only AI CLI
+council doctor                      # every seat answers, or you get the one command that fixes it
 ```
 
-When the three seats have signed off the same document, it prints the PRD (Markdown and PDF) and the one command that is yours:
+`init` writes `.council/` with `config.yml`, `CONSTITUTION.md`, `DELEGATION.md`, `personas/`, `references/` (reply contracts) and `standards/`. Commit it so the council reads the same rules every time. `--quick` sets the fast profile (at most 4 rounds, tie-break from round 3, the six starred review points, documents under 1,200 words); leave it off for the full 12-point council. `--solo` and `--full` force a seat plan, and `--force` rewrites an existing `config.yml` without touching your personas, contracts or standards. Session state lives outside the repo in `~/.council/projects/<repo>-<hash>/` (set `COUNCIL_HOME` to move it).
+
+`npx open-council-cli` works for every command below. To type `council` instead, install it once with `npm install -g open-council-cli`.
+
+### 2. Tell it what to build
+
+Either queue it on the backlog (the WIP limit in `config.yml` keeps sessions from piling up):
 
 ```bash
-council approve $SESSION "APPROVE 8a3f1b9c"         # the token is printed after sign-off
-council handoff $SESSION && council run $SESSION    # implement in a clone, run the gates, open the PR
+council backlog add "Return 404 instead of 500 for unknown slugs" --priority 1 --body "Details..."
+SESSION=$(council open unknown-slug-404 --item 001)
 ```
 
-`--quick` is the fast profile: 4 rounds, tie-break from round 3, the six starred review points, documents under 1,200 words. Leave it off for the full 12-point council on work that deserves it.
+or open a session straight from a sentence or a file:
+
+```bash
+SESSION=$(council open unknown-slug-404 --task "Return 404 instead of 500 for unknown slugs")
+SESSION=$(council open unknown-slug-404 --task-file task.md --quick)
+```
+
+`council open` prints only the session id, so it can be captured as above. `council status` lists every session and `council status $SESSION` shows one.
+
+### 3. Let the seats argue
+
+```bash
+council deliberate $SESSION
+```
+
+This runs the whole loop and can be re-run to resume: the Lead PM drafts, the Chief Engineer checks it against the code round by round, the Chief Architect rules on questions and deadlocks, then signs off with zero concerns, and the Lead signs off last. The steps are also commands of their own: `draft`, `ask`, `tiebreak`, `architect-review`, `signoff`, `finalize`.
+
+It ends one of two ways. When all three seats signed off the same document, it prints the PRD (Markdown and PDF) and an approval token. When the round budget runs out first, the session is `STALLED` and `stalled-draft-and-objections.md` in the session folder holds the last draft and every open objection.
+
+### 4. Read the PRD and approve it
+
+```bash
+council prd $SESSION                         # the document all three seats signed off
+council approve $SESSION "APPROVE 8a3f1b9c"  # use the token deliberate printed
+```
+
+This is the one decision that is yours. The token is the first 8 characters of the document's SHA-256, so it approves exactly the text you read.
+
+### 5. Build it, check it, open the PR
+
+```bash
+council handoff $SESSION   # clones the repository for execution
+council run $SESSION       # implement, merge your base branch, run the gates, push, open the PR
+```
+
+The Chief Engineer commits on `council/<slug>` in the clone. The harness merges the current tip of your base branch, runs your verification gates, and pushes and opens the pull request only if they pass. Anything that fails ends as `BLOCKED`, never as done. `council run $SESSION --skip-agent` re-runs only verification and publishing, for example after fixing a push problem. Pushing uses `git` and `gh`, so `origin` must be a GitHub remote you can push to and `gh auth status` must pass.
+
+### 6. Configure your gates (recommended)
+
+Gates are commands with exit codes, not a model's opinion. List them in `.council/config.yml`:
+
+```yaml
+verification:
+  gates:
+    - name: "test"
+      command: "npm test"
+      standard: "12-point #4 Testing & Release Engineering"
+    - name: "dependency-audit"
+      command: "npm audit --audit-level=high"
+      standard: "12-point #3 Software Supply Chain"
+```
+
+Defining `gates` replaces the implicit `lint_command`/`test_command` pair, so list those too. `council init` writes a commented catalogue of examples, and `council gates` shows what will run without running anything.
+
+### 7. Watch it (optional)
+
+```bash
+council office   # http://localhost:4321, served on 127.0.0.1 only
+```
+
+A pixel-art office where each seat types while its CLI is running. Click the whiteboard for the backlog.
+
+## 📤 Share a run
+
+Every session, from `council review` or the full council, can be turned into something you can send:
+
+```bash
+council replay $SESSION                  # one self-contained HTML page: <session id>.html
+council replay $SESSION --out run.html   # or wherever you like
+council replay $SESSION --play           # play it back in the terminal at reading pace (--fast for all at once)
+```
+
+`council replay` takes a session id (from `council status`) or a session folder. The page has every draft, objection, ruling and sign-off as the seats wrote them, the gate output and the diff, with no scripts and nothing loaded from the network. Paths under your home folder are shortened, but the page quotes your code, so read it before you publish it. The [replays](docs/replays/README.md) in this repository were made this way.
 
 ## 🧭 How is this different from an LLM council?
 
@@ -105,8 +232,9 @@ Council runs on real repositories, with the objections the Engineer raised, what
 
 A council that went wrong is just as useful here. Post yours in [Discussions → Show and tell](https://github.com/goshtasb/OpenCouncil/discussions/categories/show-and-tell).
 
-## ⚠️ Honest limits
+## 🚧 Honest limits
 
+- `council review` has one measured run so far: 6 minutes at 3 rounds, with the useful objections all in round 1 (2 min 44 s). The default is now 2 rounds.
 - A full council takes roughly **10–40 minutes** and spends real subscription quota. The quick profile is bounded at 4 rounds; its typical time is not yet measured on enough runs to quote.
 - Live runs so far are single digits. Before v0.2.0, **one in five stalled** without producing anything. v0.2.0 writes the last draft and the open objections on a stall, arbitrates early when objections stop dropping, and retries a seat that returns nothing once. Whether that moves the stall rate is not yet known; the numbers will be updated here as runs accumulate.
 - Solo mode (every seat on Claude Code) is new in v0.2.0: the seats are told apart by persona, model and tool access, not by vendor. Two live runs so far, on one small task: one stalled on review churn (which changed the review rule), one signed off in a round and shipped a PR. That is not a rate.
@@ -124,7 +252,8 @@ Found one of these the hard way? [Tell us](https://github.com/goshtasb/OpenCounc
 Open Council runs on your machine. The Claude Code plugin adds one skill, `/open-council:council`, which runs the `council` CLI (or `npx open-council-cli` if it isn't installed), plus `git` and `gh`.
 
 - Your task and the code the seats read go to the AI CLIs you assigned to the seats: Claude Code, plus any other provider CLI from [Providers](#-providers) you set up. Each CLI sends it to its own provider under your own account. In solo mode only Claude Code is used. An Ollama seat talks to your local Ollama.
-- Nothing is written to your repository before you approve the PRD. After that it commits in an isolated clone, pushes a branch and opens a pull request on your repository's remote with `gh`.
+- `council review` writes nothing to your repository and runs nothing in it. The seats see the diff (minus untracked files that look like secrets) and read the project from a temporary checkout that is removed afterwards. Its files go to `~/.council`.
+- In the full council, nothing is written to your repository before you approve the PRD. After that it commits in an isolated clone, pushes a branch and opens a pull request on your repository's remote with `gh`.
 - Session records stay on your machine under `~/.council`. The CLI has no telemetry and calls no server of its own. `council office` serves its dashboard on 127.0.0.1 only.
 
 ## 💡 How it works
@@ -186,66 +315,23 @@ seats:
     model: "grok-4.6"
 ```
 
-## 🕹️ The retro pixel office
+## 🩺 Troubleshooting
 
-```bash
-council office          # http://localhost:4321 (office.port)
-```
+| You see | What to do |
+| :--- | :--- |
+| `No AI CLI was found on PATH` | Install Claude Code (`curl -fsSL https://claude.ai/install.sh \| bash`), run `claude` once to sign in, then try again. |
+| `council review runs inside a git repository` | `cd` into the repository, or `git init` and commit first. |
+| `Nothing to review` | There is no uncommitted change and no commit ahead of the base. Pass `--base <ref>`, or a plan in quotes. |
+| `The change is … KB … more than one review can argue about well` | Commit part of it and review the rest, or pass a closer `--base`. |
+| `--rounds takes a whole number from 2 to 4` | The quick profile caps a review at 4 rounds. |
+| A seat fails in `council doctor` | Run the command `doctor` prints under it; it is the install or sign-in step for that CLI. `council doctor --no-live` checks installs without calling any model. |
+| The session ends `STALLED` | No document reached you, so nothing was built. Read `stalled-draft-and-objections.md` in the session folder (`council status $SESSION` shows where), sharpen the task, and open a new session. |
+| The session ends `BLOCKED` | A gate failed, the merge with your base branch conflicted, or the push or PR could not be made. The reason is in `council status $SESSION`. Fix it and run `council run $SESSION --skip-agent`. |
+| The PR step fails | Check `gh auth status`, and that `origin` is a GitHub remote you can push to. |
+| `gemini-cli` seats fail | Current individual Gemini tiers reject that client. Use the Antigravity CLI (`agy`) for Gemini seats. |
+| You're on Windows | Use WSL. Native Windows stops with a message, because gates run through a POSIX shell. |
 
-* Seat sprites type while that seat's CLI is running and rest when idle.
-* Click the whiteboard to view the backlog.
-* The ticker shows the active backlog item.
-
-## 🚀 The full run
-
-### 1. Initialize
-
-```bash
-council init          # or --quick, --solo, --full; --force rewrites config.yml
-council doctor
-```
-
-This writes `.council/` with `config.yml`, `CONSTITUTION.md`, `DELEGATION.md`, `personas/`, `references/` (reply contracts) and `standards/`. Harness state (backlog, sessions, worktrees, execution clones) lives outside the repo in `~/.council/projects/<repo>-<hash>/` (override with `COUNCIL_HOME`).
-
-### 2. Queue an item (WIP limit from config)
-
-```bash
-council backlog add "Add Stripe webhook idempotency and audit logs" --priority 1 --body "Details..."
-```
-
-### 3. Deliberate
-
-```bash
-SESSION=$(council open stripe-webhook-idempotency --item 001)   # or --task / --task-file; add --quick
-council deliberate $SESSION
-```
-
-`deliberate` runs the whole loop: Lead drafts → Engineer rounds → Architect rulings on questions → tie-breaks → Architect sign-off (zero concerns) → Lead sign-off → finalize. It is resumable. Individual steps are also available: `draft`, `ask`, `tiebreak`, `review`, `signoff`, `finalize`, `status`, `gates`.
-
-### 4. Configure verification gates (optional but recommended)
-
-```yaml
-verification:
-  gates:
-    - name: "test"
-      command: "npm test"
-      standard: "12-point #4 Testing & Release Engineering"
-    - name: "dependency-audit"
-      command: "npm audit --audit-level=high"
-      standard: "12-point #3 Software Supply Chain"
-```
-
-Defining `gates` replaces the implicit `lint_command`/`test_command` pair, so list those too. `council init` writes a commented catalogue of gate examples; `council gates` previews them without running anything.
-
-### 5. Approve and execute
-
-```bash
-council approve $SESSION "APPROVE 8a3f1b9c"   # token printed after finalization
-council handoff $SESSION
-council run $SESSION                           # --skip-agent re-runs only verification and publishing
-```
-
-Pushing and PR creation use `git` and the `gh` CLI, so `origin` must be a GitHub remote you can push to.
+Still stuck? Open an issue with the output of `council doctor` and, if you can, a replay of the session.
 
 ## 📦 Other install methods
 

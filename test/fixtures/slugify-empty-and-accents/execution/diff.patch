@@ -1,0 +1,73 @@
+diff --git a/package.json b/package.json
+index fdbfd8a..1373f2d 100644
+--- a/package.json
++++ b/package.json
+@@ -6,7 +6,7 @@
+   "type": "commonjs",
+   "main": "src/slug.js",
+   "scripts": {
+-    "test": "node --test test/"
++    "test": "node --test"
+   },
+   "license": "MIT"
+ }
+diff --git a/src/slug.js b/src/slug.js
+index 68be324..b3f50c2 100644
+--- a/src/slug.js
++++ b/src/slug.js
+@@ -2,14 +2,18 @@
+ 
+ /**
+  * Turns a title into a URL slug: lowercase, words joined by single dashes.
+- * Known gaps: an empty title throws, accented letters are dropped instead of
+- * transliterated, and the result is not length-limited.
++ * Latin letters with diacritics are transliterated via NFD plus removal of
++ * combining marks. Known gaps: letters without a decomposition (ß ø æ œ đ ł þ) and
++ * ligatures or compatibility characters (ﬁ ǅ Ⅻ) are still treated as
++ * separators, and the result is not length-limited.
+  */
+ function slugify(title) {
+-  if (typeof title !== 'string' || title.length === 0) {
+-    throw new TypeError('slugify: title must be a non-empty string');
++  if (typeof title !== 'string') {
++    throw new TypeError('slugify: title must be a string');
+   }
+   return title
++    .normalize('NFD')
++    .replace(/[̀-ͯ]/g, '')
+     .toLowerCase()
+     .replace(/[^a-z0-9]+/g, '-')
+     .replace(/^-|-$/g, '');
+diff --git a/test/slug.test.js b/test/slug.test.js
+index 99bc93c..9b0443b 100644
+--- a/test/slug.test.js
++++ b/test/slug.test.js
+@@ -9,3 +9,28 @@ test('words become dash-separated lowercase', () => {
+ test('punctuation collapses into one dash', () => {
+   assert.equal(slugify('Add Stripe: webhook idempotency!'), 'add-stripe-webhook-idempotency');
+ });
++
++test('empty string returns empty string', () => {
++  assert.equal(slugify(''), '');
++});
++
++test('whitespace and punctuation only returns empty string', () => {
++  assert.equal(slugify('  !! '), '');
++});
++
++test('non-strings throw TypeError', () => {
++  for (const value of [undefined, null, 42, {}, []]) {
++    assert.throws(() => slugify(value), TypeError);
++  }
++});
++
++test('accented letters are transliterated', () => {
++  assert.equal(slugify('Café'), 'cafe');
++  assert.equal(slugify('Año Nuevo'), 'ano-nuevo');
++  assert.equal(slugify('Crème brûlée'), 'creme-brulee');
++  assert.equal(slugify('Café'), 'cafe');
++});
++
++test('letters without decomposition still separate', () => {
++  assert.equal(slugify('Über Straße'), 'uber-stra-e');
++});

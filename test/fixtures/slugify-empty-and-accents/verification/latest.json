@@ -1,0 +1,17 @@
+{
+  "verifiedAt": "2026-11-06T19:12:44.936Z",
+  "headSha": "1dab67c2458ac9e709de8ba0c6153c4522916aae",
+  "passed": true,
+  "gates": [
+    {
+      "name": "test",
+      "command": "npm test",
+      "required": true,
+      "standard": "12-point #4 Testing & Release Engineering",
+      "exitCode": 0,
+      "passed": true,
+      "durationMs": 181,
+      "output": "\n> council-playground@0.1.0 test\n> node --test\n\nTAP version 13\n# Subtest: words become dash-separated lowercase\nok 1 - words become dash-separated lowercase\n  ---\n  duration_ms: 0.792807\n  type: 'test'\n  ...\n# Subtest: punctuation collapses into one dash\nok 2 - punctuation collapses into one dash\n  ---\n  duration_ms: 0.170194\n  type: 'test'\n  ...\n# Subtest: empty string returns empty string\nok 3 - empty string returns empty string\n  ---\n  duration_ms: 0.133146\n  type: 'test'\n  ...\n# Subtest: whitespace and punctuation only returns empty string\nok 4 - whitespace and punctuation only returns empty string\n  ---\n  duration_ms: 0.076206\n  type: 'test'\n  ...\n# Subtest: non-strings throw TypeError\nok 5 - non-strings throw TypeError\n  ---\n  duration_ms: 0.278566\n  type: 'test'\n  ...\n# Subtest: accented letters are transliterated\nok 6 - accented letters are transliterated\n  ---\n  duration_ms: 0.105956\n  type: 'test'\n  ...\n# Subtest: letters without decomposition still separate\nok 7 - letters without decomposition still separate\n  ---\n  duration_ms: 0.100196\n  type: 'test'\n  ...\n1..7\n# tests 7\n# suites 0\n# pass 7\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 50.946618"
+    }
+  ]
+}

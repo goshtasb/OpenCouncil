@@ -1,0 +1,2 @@
+VERDICT: SIGN-OFF
+SUMMARY: The document answers the task fully, each requirement maps to a named test or command, and I found no remaining concerns. I traced the chain by hand and the red/green expectations hold, including `'Über Straße'` giving `ber-stra-e` on the old code and `uber-stra-e` on the new.

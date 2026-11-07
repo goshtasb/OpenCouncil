@@ -1,0 +1,1 @@
+slugify('') throws; make it return '' (keep throwing for non-strings), and transliterate accented Latin letters (é→e, ü→u, ñ→n) instead of dropping them. Keep the two existing tests passing, add tests, no new dependencies.
