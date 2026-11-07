@@ -1,0 +1,21 @@
+name: debug publish
+on:
+  push:
+    branches: ['debug/**']
+jobs:
+  dry:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, macos-15]
+        node: ['22.x', '24.x']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm ci
+      - run: npm publish --dry-run 2>&1 | tee pub.log; echo "exit ${PIPESTATUS[0]}"
+      - run: grep -n -A30 "^not ok" pub.log | head -150 || true
+      - run: npm test 2>&1 | tail -12
