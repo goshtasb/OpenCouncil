@@ -187,7 +187,7 @@ council office   # http://localhost:4321, served on 127.0.0.1 only
 
 A pixel-art office where each seat types while its CLI is running. Click the whiteboard for the backlog.
 
-## 🎞️ Share a run
+## 📤 Share a run
 
 Every session, from `council review` or the full council, can be turned into something you can send:
 
@@ -232,7 +232,7 @@ Council runs on real repositories, with the objections the Engineer raised, what
 
 A council that went wrong is just as useful here. Post yours in [Discussions → Show and tell](https://github.com/goshtasb/OpenCouncil/discussions/categories/show-and-tell).
 
-## ⚠️ Honest limits
+## 🚧 Honest limits
 
 - `council review` has one measured run so far: 6 minutes at 3 rounds, with the useful objections all in round 1 (2 min 44 s). The default is now 2 rounds.
 - A full council takes roughly **10–40 minutes** and spends real subscription quota. The quick profile is bounded at 4 rounds; its typical time is not yet measured on enough runs to quote.
