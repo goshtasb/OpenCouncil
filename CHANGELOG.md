@@ -5,6 +5,20 @@ versions follow [SemVer](https://semver.org/). Get notified of new versions with
 
 ## [Unreleased]
 
+## [0.3.1] — 2026-11-07
+
+Run the council on every pull request, on your own Claude plan or your own API key.
+
+### Added
+- A GitHub Action (`uses: goshtasb/OpenCouncil@main`) that reviews each pull request and posts the strongest file:line objections as one comment, with a link to the full replay. It takes your plan token from `claude setup-token` (`claude_code_oauth_token`) or your own Anthropic API key (`anthropic_api_key`, recommended for team repos), edits its earlier comment instead of adding more, and skips fork, draft and login-less runs with a notice. See "Review every pull request" in the README.
+- `council review` prints which login each seat uses (your plan or an API key) before the seats start, and warns when `ANTHROPIC_API_KEY` would bill a key instead of your plan. `council doctor` names it for each seat too.
+- `council review --comment <file>` writes a PR-comment version of the review, and `--replay-url <url>` links it to the full replay.
+- With a Gemini API key (or Vertex turned on) and gemini-cli installed, the Lead PM seat runs on gemini-cli, since Antigravity cannot use a key.
+
+### Fixed
+- A seat CLI that fails is reported by name with its last lines of output, not its whole command line.
+- file:line locations keep a leading dot (`.github/...`).
+
 ## [0.3.0] — 2026-11-07
 
 Point the council at your own code with no setup: `npx open-council-cli review`.
@@ -93,7 +107,8 @@ First public release.
 - Documents a seat saves instead of printing are recovered.
 - The zero-tool Architect seat stays tool-free across providers.
 
-[Unreleased]: https://github.com/goshtasb/OpenCouncil/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/goshtasb/OpenCouncil/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/goshtasb/OpenCouncil/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/goshtasb/OpenCouncil/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/goshtasb/OpenCouncil/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/goshtasb/OpenCouncil/compare/v0.1.0...v0.2.0
