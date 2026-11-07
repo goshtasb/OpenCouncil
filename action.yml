@@ -88,6 +88,14 @@ runs:
         ANTHROPIC_API_KEY=$(printf %s "$ANTHROPIC_API_KEY" | tr -d '[:space:]')
         CLAUDE_CODE_OAUTH_TOKEN=$(printf %s "$CLAUDE_CODE_OAUTH_TOKEN" | tr -d '[:space:]')
         export ANTHROPIC_API_KEY CLAUDE_CODE_OAUTH_TOKEN
+        # Say what the secret looks like, never what it is: the commonest 401 is the wrong kind of token in the wrong input.
+        if [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+          case "$CLAUDE_CODE_OAUTH_TOKEN" in
+            sk-ant-oat*) echo "Plan token: ${#CLAUDE_CODE_OAUTH_TOKEN} characters, in the format \`claude setup-token\` prints." ;;
+            sk-ant-api*) echo "::warning title=Open Council::claude_code_oauth_token holds an API key. Pass it as anthropic_api_key instead." ;;
+            *) echo "::warning title=Open Council::claude_code_oauth_token (${#CLAUDE_CODE_OAUTH_TOKEN} characters) does not start like a token from \`claude setup-token\`." ;;
+          esac
+        fi
         # An empty variable still counts as set for some tools; drop whichever login was not given.
         [ -n "$ANTHROPIC_API_KEY" ] || unset ANTHROPIC_API_KEY
         [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ] || unset CLAUDE_CODE_OAUTH_TOKEN
