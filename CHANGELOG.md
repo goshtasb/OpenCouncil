@@ -5,6 +5,10 @@ versions follow [SemVer](https://semver.org/). Get notified of new versions with
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-11-07
+
+Point the council at your own code with no setup: `npx open-council-cli review`.
+
 ### Added
 - `council review` has the council tear into your own change, with no setup. Run `npx open-council-cli review` in any git repository with Claude Code installed. It reviews your uncommitted changes, or the branch since its base (`--base <ref>`), or a one-line plan (`council review "add rate limiting to login"`). Seats come from the AI CLIs on your PATH and the gates from your project files; nothing is written to the repository and nothing is executed. It runs the quick profile with 2 rounds (`--rounds`, up to 4), about four minutes and writes `review.html` and `review.md`, which lead with the strongest file:line objections and a line you can share. Before the seats start it lists every file whose diff they will see; untracked files that look like secrets (`.env*`, `*.pem`, `*.key`, `id_rsa` and the like) are never sent. Each review uses a worktree of its own and removes it when it ends, so it never disturbs a session already running in the same repo.
 - `council replay <session>` writes any session (by id or by directory) as one self-contained HTML page: every seat reply rendered from its saved file, the timeline, rulings, the signed-off PRD, gate output, commits and the diff, with local paths shortened. The page has no scripts and loads nothing from the network. `--play` plays the session back in the terminal instead.
@@ -89,7 +93,8 @@ First public release.
 - Documents a seat saves instead of printing are recovered.
 - The zero-tool Architect seat stays tool-free across providers.
 
-[Unreleased]: https://github.com/goshtasb/OpenCouncil/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/goshtasb/OpenCouncil/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/goshtasb/OpenCouncil/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/goshtasb/OpenCouncil/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/goshtasb/OpenCouncil/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/goshtasb/OpenCouncil/releases/tag/v0.1.0
