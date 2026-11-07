@@ -11,6 +11,8 @@
 
 **[Watch a real council, every objection and sign-off →](docs/replays/README.md)**
 
+Or watch one in your terminal in about a minute, with no setup and no model calls: `npx open-council-cli demo`
+
 [Install](#-install-in-one-line) •
 [Five-minute run](#-your-first-council-in-five-minutes) •
 [How it is different](#-how-is-this-different-from-an-llm-council) •
@@ -25,6 +27,18 @@
 <sub>`council office`, replaying the seat states of the session that built <a href="https://github.com/goshtasb/OpenCouncil/pull/1">PR #1</a>. The seats take turns; the human only approves.</sub>
 
 </div>
+
+## 🎬 See one before you install
+
+```bash
+npx open-council-cli demo
+```
+
+![council demo: the Chief Engineer's first objection is that the repo's npm test runs zero tests on Node 22, the seats revise until all three sign off, the gates pass, and the run ends BLOCKED rather than claiming done](docs/demo-terminal.gif)
+
+This plays back a real recorded run (solo mode, a small slugify library) at reading pace. Nothing is installed and no model is called. `council demo --html` writes the same run as one page with every reply in full.
+
+Any session of your own can be shared the same way: `council replay <session>` writes a self-contained HTML page (no scripts, nothing loaded from the network), and `council replay <session> --play` plays it back in the terminal.
 
 ## ⚡ Install in one line
 

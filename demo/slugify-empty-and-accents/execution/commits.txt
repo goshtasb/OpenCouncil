@@ -1,0 +1,2 @@
+1dab67c fix(slug): return '' for empty input and transliterate accented letters
+a0b2282 fix(test): make npm test discover test files on Node 22

@@ -1,0 +1,7 @@
+{
+  "round": 4,
+  "verdict": "SIGN-OFF",
+  "summary": "The document answers the task fully, each requirement maps to a named test or command, and I found no remaining concerns. I traced the chain by hand and the red/green expectations hold, including 'Über Straße' giving ber-stra-e on the old code and uber-stra-e on the new.",
+  "planSha256": "47d99f766e0e840a5871b1220c214c2713688498add521700ff206585be5d4f1",
+  "replySha256": "2990393f2b6a8cda714d1172b61770ae8b6116f5683b4c287b59f7d46c3f4f18"
+}

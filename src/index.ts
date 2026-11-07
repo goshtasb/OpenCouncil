@@ -21,3 +21,7 @@ export * from './utils/paths.js';
 export * from './utils/prompts.js';
 export * from './utils/pdf.js';
 export * from './office/server.js';
+export * from './replay/session-replay.js';
+export * from './replay/markdown.js';
+export * from './replay/html.js';
+export * from './replay/play.js';

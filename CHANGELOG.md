@@ -5,6 +5,11 @@ versions follow [SemVer](https://semver.org/). Get notified of new versions with
 
 ## [Unreleased]
 
+### Added
+- `council demo` plays back a real recorded council run in the terminal in about a minute: the task, each seat's verdicts and first objections, the sign-off, the gates and the outcome. It needs no setup, no config and no model calls, so `npx open-council-cli demo` works anywhere. `council demo --html [file]` writes the same run as one page.
+- `council replay <session>` writes any session (by id or by directory) as one self-contained HTML page: every seat reply rendered from its saved file, the timeline, rulings, the signed-off PRD, gate output, commits and the diff, with local paths shortened. The page has no scripts and loads nothing from the network. `--play` plays the session back in the terminal instead.
+- `docs/demo-terminal.gif`, rendered from `council demo`'s own output by `docs/make-demo-gif.py`.
+
 ## [0.2.1] — 2026-11-06
 
 A small release, and the first with outside contributors. Thanks to [@O1sumitkumar](https://github.com/O1sumitkumar) and [@Doomguy-BFG9000](https://github.com/Doomguy-BFG9000).
