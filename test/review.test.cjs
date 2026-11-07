@@ -139,20 +139,27 @@ test('runReview with a task reviews the plan; with nothing to review or a huge d
 });
 
 test('council review outside a git repo, or with no AI CLI on PATH, is one clean line', () => {
-  // A PATH with only node and git on it, so no AI CLI is found (claude often sits next to node).
+  // No AI CLI may be reachable, even on a developer machine that has them installed:
+  // - PATH holds only node and git (claude often sits next to node, e.g. /opt/homebrew/bin).
+  // - git is a wrapper that execs the real binary by absolute path, because on macOS /usr/bin/git
+  //   is an xcrun shim that does not work from a symlink in a bare PATH.
+  // - HOME is empty and GROK_BIN is unset, because the Grok adapter also looks in ~/.grok/bin.
   const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'council-bare-path-'));
   fs.symlinkSync(process.execPath, path.join(bare, 'node'));
-  fs.symlinkSync(spawnSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).stdout.trim(), path.join(bare, 'git'));
-  const env = { ...process.env, COUNCIL_HOME: home, PATH: bare };
+  const realGit = spawnSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).stdout.trim();
+  fs.writeFileSync(path.join(bare, 'git'), `#!/bin/sh\nexec "${realGit}" "$@"\n`, { mode: 0o755 });
+  const emptyHome = fs.mkdtempSync(path.join(os.tmpdir(), 'council-empty-home-'));
+  const env = { ...process.env, COUNCIL_HOME: home, PATH: bare, HOME: emptyHome, USERPROFILE: emptyHome };
+  delete env.GROK_BIN;
   const notRepo = fs.mkdtempSync(path.join(os.tmpdir(), 'council-norepo-'));
   const a = spawnSync(process.execPath, [bin, 'review'], { cwd: notRepo, env, encoding: 'utf8' });
   assert.equal(a.status, 1);
-  assert.match(a.stderr, /runs inside a git repository/);
+  assert.match(a.stderr, /runs inside a git repository/, `stderr was: ${a.stderr}`);
   const repo = makeRepo();
   fs.appendFileSync(path.join(repo, 'README.md'), 'x\n');
   const b = spawnSync(process.execPath, [bin, 'review'], { cwd: repo, env, encoding: 'utf8' });
   assert.equal(b.status, 1);
-  assert.match(b.stderr, /No AI CLI was found on PATH/);
+  assert.match(b.stderr, /No AI CLI was found on PATH/, `stderr was: ${b.stderr}`);
   assert.doesNotMatch(b.stderr, /\n\s+at /);
   assert.ok(!fs.existsSync(path.join(repo, '.council')));
 });
