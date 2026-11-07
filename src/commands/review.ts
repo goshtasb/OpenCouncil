@@ -9,6 +9,8 @@ import { logger } from '../utils/logger.js';
 import { SessionManager } from '../engine/session.js';
 import { printArchitectReview } from './council.js';
 import { CliContext, action } from './shared.js';
+import { describeSeatLogins } from '../utils/auth.js';
+import { renderPrComment } from '../replay/markdown-replay.js';
 
 function openInBrowser(file: string): void {
   const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'cmd' : 'xdg-open';
@@ -41,8 +43,10 @@ export function registerReviewCommands(program: Command, ctx: CliContext): void 
     .option('--rounds <n>', `Round budget, ${REVIEW_MIN_ROUNDS} to ${REVIEW_MAX_ROUNDS} (default ${REVIEW_ROUNDS})`, (v: string) => (/^\d+$/.test(v) ? Number(v) : NaN))
     .option('-o, --out <dir>', 'Also copy review.html and review.md into this directory')
     .option('--gist', 'Also put review.md in a secret GitHub gist (uses your gh CLI) and print its link')
+    .option('--comment <file>', 'Also write the review as one pull request comment (Markdown, under GitHub\'s size limit) to this file')
+    .option('--replay-url <url>', 'With --comment: the link the comment gives for the full replay')
     .option('--no-open', 'Do not open the page in a browser when it is done')
-    .action(action(async (taskWords: string[], options: { base?: string; rounds?: number; out?: string; gist?: boolean; open: boolean }) => {
+    .action(action(async (taskWords: string[], options: { base?: string; rounds?: number; out?: string; gist?: boolean; comment?: string; replayUrl?: string; open: boolean }) => {
       // Before 0.3 `council review <session>` ran the Chief Architect's review of a session. Keep that working.
       if (isSessionId(taskWords)) {
         console.error('⚠ `council review <session>` is now `council architect-review <session>`, and the old form goes away in 0.4.0. Running that.');
@@ -56,6 +60,9 @@ export function registerReviewCommands(program: Command, ctx: CliContext): void 
       const task = taskWords.join(' ').trim() || undefined;
       const { config, plan, gates } = await reviewConfig(repo, options.rounds === undefined ? REVIEW_ROUNDS : options.rounds);
       if (plan) logger.info(`Seats (${plan.mode}): ${Object.entries(plan.seats).map(([seat, p]) => `${seat} ${p.provider}/${p.model}`).join(', ')}`);
+      const logins = describeSeatLogins(config.seats);
+      logger.info(`Logins: ${logins.lines.join('; ')}`);
+      logins.warnings.forEach(w => logger.warn(w));
       if (gates && gates.test) logger.info(`Gates from ${gates.source}: ${[gates.test, gates.lint].filter(Boolean).join(', ')} (read by the seats, not run)`);
       const result = await runReview(repo, {
         task, base: options.base, config,
@@ -77,6 +84,10 @@ export function registerReviewCommands(program: Command, ctx: CliContext): void 
         fs.copyFileSync(result.htmlPath, html);
         fs.copyFileSync(result.mdPath, md);
       }
+      if (options.comment) {
+        fs.mkdirSync(path.dirname(path.resolve(options.comment)), { recursive: true });
+        fs.writeFileSync(options.comment, renderPrComment(result.replay, { top: result.top, share: result.share, replayUrl: options.replayUrl }), 'utf8');
+      }
       const mins = Math.floor(result.seconds / 60);
       console.log('');
       const took = `${mins ? `${mins} min ` : ''}${result.seconds % 60} s`;
@@ -94,6 +105,7 @@ export function registerReviewCommands(program: Command, ctx: CliContext): void 
       console.log(chalk.bold('\nShare it:'));
       console.log(`  ${result.share}`);
       console.log(`\nPage:     ${html}\nMarkdown: ${md} ${chalk.dim('(paste into a gist or a PR comment)')}`);
+      if (options.comment) console.log(`Comment:  ${options.comment}`);
       if (options.gist) {
         const url = createGist(md);
         if (url) console.log(`Gist:     ${url}`);
