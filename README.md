@@ -98,12 +98,12 @@ on:
 permissions:
   contents: read
   pull-requests: write
-concurrency:
-  group: council-review-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
 jobs:
   review:
     if: github.event.action != 'labeled' || github.event.label.name == 'council-review'
+    concurrency:
+      group: council-review-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

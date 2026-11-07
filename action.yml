@@ -141,8 +141,8 @@ runs:
       run: |
         marker='<!-- open-council-review -->'
         id=$(gh api --paginate "repos/$REPO/issues/$PR/comments" --jq ".[] | select(.body | startswith(\"$marker\")) | .id" | tail -n1)
-        if [ -n "$id" ]; then
-          gh api --method PATCH "repos/$REPO/issues/comments/$id" -F body=@"$BODY_FILE" --jq .html_url
-        else
-          gh api --method POST "repos/$REPO/issues/$PR/comments" -F body=@"$BODY_FILE" --jq .html_url
+        # Edit the earlier review comment. If that comment is someone else's (anyone can paste the marker), the edit is refused: add a new one instead.
+        if [ -n "$id" ] && gh api --method PATCH "repos/$REPO/issues/comments/$id" -F body=@"$BODY_FILE" --jq .html_url; then
+          exit 0
         fi
+        gh api --method POST "repos/$REPO/issues/$PR/comments" -F body=@"$BODY_FILE" --jq .html_url

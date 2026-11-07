@@ -14,6 +14,8 @@ export interface SeatAuth {
 
 type Env = Record<string, string | undefined>;
 const set = (env: Env, name: string) => typeof env[name] === 'string' && env[name]!.trim() !== '';
+/** A switch variable such as GOOGLE_GENAI_USE_VERTEXAI counts only when it is turned on, not merely present. */
+const on = (env: Env, name: string) => /^(1|true|yes)$/i.test((env[name] ?? '').trim());
 
 /** Follows each CLI's documented precedence; the first credential it would use wins. */
 export function describeAuth(provider: string, env: Env = process.env): SeatAuth {
@@ -37,7 +39,8 @@ export function describeAuth(provider: string, env: Env = process.env): SeatAuth
       if (set(env, 'XAI_API_KEY')) return { kind: 'api-key', label: 'API key from XAI_API_KEY' };
       return { kind: 'plan', label: 'your Grok login' };
     case 'gemini-cli':
-      if (set(env, 'GOOGLE_GENAI_USE_VERTEXAI') || set(env, 'GOOGLE_APPLICATION_CREDENTIALS')) return { kind: 'cloud', label: 'Google Vertex AI' };
+      // gemini-cli uses Vertex only when GOOGLE_GENAI_USE_VERTEXAI is on; a service-account path alone may belong to another tool.
+      if (on(env, 'GOOGLE_GENAI_USE_VERTEXAI')) return { kind: 'cloud', label: 'Google Vertex AI (GOOGLE_GENAI_USE_VERTEXAI)' };
       if (set(env, 'GEMINI_API_KEY')) return { kind: 'api-key', label: 'API key from GEMINI_API_KEY' };
       if (set(env, 'GOOGLE_API_KEY')) return { kind: 'api-key', label: 'API key from GOOGLE_API_KEY' };
       return { kind: 'plan', label: 'your Google login' };
@@ -52,7 +55,7 @@ export function describeAuth(provider: string, env: Env = process.env): SeatAuth
 
 /** True when the environment carries a Gemini API key or Vertex credentials, which gemini-cli can use and Antigravity cannot. */
 export function hasGeminiKey(env: Env = process.env): boolean {
-  return ['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'GOOGLE_GENAI_USE_VERTEXAI', 'GOOGLE_APPLICATION_CREDENTIALS'].some(n => set(env, n));
+  return set(env, 'GEMINI_API_KEY') || set(env, 'GOOGLE_API_KEY') || on(env, 'GOOGLE_GENAI_USE_VERTEXAI');
 }
 
 const PROVIDER_NAMES: Record<string, string> = {

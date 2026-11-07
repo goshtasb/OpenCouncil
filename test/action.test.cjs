@@ -84,22 +84,55 @@ test('the action skips forks, drafts, other events and a missing login, and runs
   assert.equal(runStep('guard', { ...base, HAS_TOKEN: 'false', HAS_KEY: 'true' }).outputs.run, 'true', 'an API key alone is enough');
 });
 
-test('the action edits its own earlier comment instead of adding another', () => {
+// A fake gh that serves COMMENTS (JSON) for the list call and runs the action's own --jq filter through real jq,
+// so the marker selection is exercised, and refuses a PATCH when PATCH_FAILS is set (someone else's comment).
+function fakeGh() {
   const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'council-fake-gh-'));
   const log = path.join(bin, 'calls');
-  // Lists one comment with the marker (id 42) when EXISTING is set, then records every call.
-  fs.writeFileSync(path.join(bin, 'gh'), `#!/bin/sh\necho "$*" >> "${log}"\ncase "$*" in *--paginate*) [ -n "$EXISTING" ] && echo 42 ;; *) echo https://github.com/o/r/pull/1#issuecomment-42 ;; esac\n`, { mode: 0o755 });
+  fs.writeFileSync(path.join(bin, 'gh'), `#!/bin/bash
+echo "$*" >> "${log}"
+jqf=""; prev=""; for a in "$@"; do [ "$prev" = "--jq" ] && jqf="$a"; prev="$a"; done
+case "$*" in
+  *--paginate*) printf '%s' "$COMMENTS" | jq -r "$jqf" ;;
+  *PATCH*) [ -n "$PATCH_FAILS" ] && { echo "HTTP 403" >&2; exit 1; }; echo https://github.com/o/r/pull/1#issuecomment-patched ;;
+  *) echo https://github.com/o/r/pull/1#issuecomment-new ;;
+esac
+`, { mode: 0o755 });
+  return { bin, log };
+}
+
+test('the action edits its own earlier comment instead of adding another', { skip: spawnSync('jq', ['--version']).status !== 0 && 'needs jq' }, () => {
+  const { bin, log } = fakeGh();
   const body = path.join(bin, 'comment.md');
   fs.writeFileSync(body, `${lib.PR_COMMENT_MARKER}\nhi\n`);
+  const marked = b => `${lib.PR_COMMENT_MARKER}\n${b}`;
   const env = { GH_TOKEN: 't', REPO: 'o/r', PR: '7', BODY_FILE: body };
-  const created = runStep('Post or update the comment', env, bin);
-  assert.equal(created.status, 0, created.stderr);
-  assert.match(fs.readFileSync(log, 'utf8'), /--method POST repos\/o\/r\/issues\/7\/comments -F body=@/);
-  fs.writeFileSync(log, '');
-  assert.equal(runStep('Post or update the comment', { ...env, EXISTING: '1' }, bin).status, 0);
-  const calls = fs.readFileSync(log, 'utf8');
-  assert.match(calls, /--method PATCH repos\/o\/r\/issues\/comments\/42/);
+  const run = extra => { fs.writeFileSync(log, ''); const r = runStep('Post or update the comment', { ...env, ...extra }, bin); assert.equal(r.status, 0, r.stderr); return fs.readFileSync(log, 'utf8'); };
+
+  let calls = run({ COMMENTS: JSON.stringify([{ id: 5, body: 'nice PR' }, { id: 6, body: `quoting ${lib.PR_COMMENT_MARKER}` }]) });
+  assert.match(calls, /--method POST repos\/o\/r\/issues\/7\/comments -F body=@/, 'no comment starts with the marker: add one');
+  assert.doesNotMatch(calls, /PATCH/);
+
+  calls = run({ COMMENTS: JSON.stringify([{ id: 41, body: marked('old') }, { id: 9, body: 'hi' }, { id: 42, body: marked('newer') }]) });
+  assert.match(calls, /--method PATCH repos\/o\/r\/issues\/comments\/42 /, 'the latest marked comment is the one edited');
   assert.doesNotMatch(calls, /POST/);
+
+  calls = run({ COMMENTS: JSON.stringify([{ id: 42, body: marked('pasted by someone else') }]), PATCH_FAILS: '1' });
+  assert.match(calls, /PATCH repos\/o\/r\/issues\/comments\/42/);
+  assert.match(calls, /--method POST repos\/o\/r\/issues\/7\/comments/, 'a refused edit falls back to a new comment');
+});
+
+test('Gemini Vertex counts only when GOOGLE_GENAI_USE_VERTEXAI is on, and file:line keeps a leading dot', () => {
+  assert.equal(lib.describeAuth('gemini-cli', { GOOGLE_APPLICATION_CREDENTIALS: '/k.json' }).kind, 'plan', 'a service-account path alone is not a Gemini login');
+  assert.equal(lib.describeAuth('gemini-cli', { GOOGLE_GENAI_USE_VERTEXAI: 'false' }).kind, 'plan');
+  assert.equal(lib.describeAuth('gemini-cli', { GOOGLE_GENAI_USE_VERTEXAI: 'true' }).kind, 'cloud');
+  const all = new Set(['claude-code', 'antigravity', 'grok-cli', 'gemini-cli']);
+  assert.equal(lib.planSeats(all, { GOOGLE_APPLICATION_CREDENTIALS: '/k.json' }).seats.lead_pm.provider, 'antigravity');
+  assert.equal(lib.planSeats(all, { GOOGLE_GENAI_USE_VERTEXAI: '1' }).seats.lead_pm.provider, 'gemini-cli');
+  const { findLocation } = require('../dist/review/quick-review.js');
+  assert.equal(findLocation('set at (`.github/workflows/council-review.yml:15-17`) and'), '.github/workflows/council-review.yml:15-17');
+  assert.equal(findLocation('see src/utils/auth.ts:38.'), 'src/utils/auth.ts:38');
+  assert.equal(findLocation('no file here'), undefined);
 });
 
 test('this repo reviews its own pull requests on the maintainer\'s plan token only', () => {
