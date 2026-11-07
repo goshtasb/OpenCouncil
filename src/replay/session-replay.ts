@@ -180,7 +180,11 @@ export function objectionHeadlines(reply: string): { headline: string; evidence:
   for (let i = 0; i < lines.length; i++) {
     const m = /^\d+\.\s+\*\*(.+?)\*\*\s*(.*)$/.exec(lines[i]);
     if (!m) continue;
-    const evidence = (m[2] || lines.slice(i + 1).find(l => l.trim()) || '').trim();
+    let evidence = (m[2] || '').trim();
+    // Seats often put the evidence on the next lines, as "- Evidence: ..." bullets; take the first one with content.
+    for (let j = i + 1; !evidence && j < lines.length && !/^\d+\.\s/.test(lines[j]); j++) {
+      evidence = lines[j].trim().replace(/^[-*]\s*/, '').replace(/^\*{0,2}(Evidence|Result|Why|Why it matters now)\s*:\s*\*{0,2}\s*/i, '').trim();
+    }
     out.push({ headline: m[1].trim(), evidence });
   }
   return out;

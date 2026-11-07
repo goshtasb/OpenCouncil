@@ -13,8 +13,8 @@ import { CouncilEngine } from '../engine/council.js';
 import { DeliberationEngine } from '../engine/deliberation.js';
 import { projectStateDir } from '../utils/paths.js';
 
-/** Round budget for `council review`: short enough to finish in minutes, long enough for one revision. */
-export const REVIEW_ROUNDS = 3;
+/** Round budget for `council review`. The first round carries the code objections; later rounds argue over the Lead PM's fix plan, so two keeps a review near four minutes. */
+export const REVIEW_ROUNDS = 2;
 export const REVIEW_MIN_ROUNDS = 2;
 export const REVIEW_MAX_ROUNDS = 4;
 /** Above this the diff is too big to argue about usefully in one sitting. */
@@ -182,8 +182,8 @@ function engineerObjections(reply: string): { headline: string; evidence: string
 const LOCATION = /\b[\w./-]+\.[A-Za-z]{1,5}:\d+(?:-\d+)?\b/;
 
 /**
- * The objections worth leading with: the Chief Engineer's, earliest round first, those that cite a file:line
- * ahead of those that don't, then the Chief Architect's required concerns. Duplicates across rounds are dropped.
+ * The objections worth leading with: the Chief Engineer's, earliest round first (later rounds argue over the fix plan),
+ * those that cite a file:line ahead of those that don't, then the Chief Architect's required concerns. Duplicates across rounds are dropped.
  */
 export function topObjections(replay: SessionReplay, limit = 3): TopObjection[] {
   const all: TopObjection[] = [];
@@ -208,7 +208,9 @@ export function topObjections(replay: SessionReplay, limit = 3): TopObjection[] 
     seen.add(key);
     return true;
   });
-  const rank = (o: TopObjection) => (o.seat === 'Chief Engineer' ? 0 : 100) + (o.location ? 0 : 10) + o.round;
+  // Headlines that lean on the session's own labels ("ruling R2", "FR7") mean little to anyone outside it.
+  const jargon = (o: TopObjection) => (/\b(N?FR|R)\d+\b|\bruling\b/i.test(o.headline) ? 5 : 0);
+  const rank = (o: TopObjection) => (o.seat === 'Chief Engineer' ? 0 : 100) + (o.location ? 0 : 10) + jargon(o) + o.round * 8;
   return unique.map((o, i) => ({ o, i })).sort((a, b) => rank(a.o) - rank(b.o) || a.i - b.i).slice(0, limit).map(x => x.o);
 }
 
@@ -288,7 +290,7 @@ export async function runReview(repo: string, options: ReviewOptions = {}): Prom
   }
   const dir = sessions.getSessionPath(sessionId);
   const replay = loadSessionReplay(dir);
-  const top = topObjections(replay);
+  const top = topObjections(replay, 5);
   const share = shareLine(replay, top);
   const htmlPath = path.join(dir, 'review.html');
   const mdPath = path.join(dir, 'review.md');

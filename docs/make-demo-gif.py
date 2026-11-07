@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Renders docs/demo-terminal.gif from the real output of `council demo`.
+"""Renders docs/demo-terminal.gif from the real output of `council replay <session> --play`.
 
-It runs the built CLI (`node bin/council.js demo --fast` with colour forced on), keeps its text and
-colours exactly, and reveals it one beat at a time in a scrolling terminal window. Nothing is typed in
-by hand: if the recorded session or the playback changes, re-run this and the GIF follows.
+It runs the built CLI (`node bin/council.js replay <session> --play --fast` with colour forced on), keeps
+its text and colours exactly, and reveals it one beat at a time in a scrolling terminal window. Nothing is
+typed in by hand: if the session or the playback changes, re-run this and the GIF follows. --after appends
+the closing lines of a real run (for example what `council review` printed at the end) as a last beat.
 
-Usage: python3 docs/make-demo-gif.py [out.gif] [--mp4 out.mp4]
+Usage: python3 docs/make-demo-gif.py [out.gif] [--session dir] [--prompt text] [--after file] [--mp4 out.mp4]
 Needs Pillow and the DejaVu Sans Mono font; --mp4 also needs ffmpeg.
 """
 import os, re, subprocess, sys
@@ -13,9 +14,13 @@ from PIL import Image, ImageDraw, ImageFont
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 args = sys.argv[1:]
-mp4 = None
-if '--mp4' in args:
-    i = args.index('--mp4'); mp4 = args[i + 1]; del args[i:i + 2]
+def option(name, default=None):
+    if name not in args: return default
+    i = args.index(name); value = args[i + 1]; del args[i:i + 2]; return value
+mp4 = option('--mp4')
+SESSION = option('--session', os.path.join(ROOT, 'test', 'fixtures', 'slugify-empty-and-accents'))
+PROMPT = option('--prompt', 'npx open-council-cli review')
+AFTER = option('--after')
 OUT = args[0] if args else os.path.join(ROOT, 'docs', 'demo-terminal.gif')
 
 COLS, ROWS, FS = 100, 30, 15
@@ -31,8 +36,10 @@ ANSI = {31: (255, 121, 121), 32: (126, 231, 135), 33: (241, 196, 15), 34: (121, 
         35: (217, 140, 255), 36: (86, 220, 220), 37: FG, 90: DIM}
 
 env = dict(os.environ, FORCE_COLOR='1')
-raw = subprocess.run(['node', os.path.join(ROOT, 'bin', 'council.js'), 'demo', '--fast'],
+raw = subprocess.run(['node', os.path.join(ROOT, 'bin', 'council.js'), 'replay', SESSION, '--play', '--fast'],
                      capture_output=True, text=True, env=env, cwd=ROOT, check=True).stdout
+if AFTER:
+    raw = raw.rstrip('\n') + '\n\n' + open(AFTER).read()
 
 def parse(line):
     """ANSI SGR line -> list of (text, colour, bold)."""
@@ -52,7 +59,7 @@ def parse(line):
     return spans
 
 lines = [parse(l) for l in raw.rstrip('\n').split('\n')]
-prompt = [[('$ ', ANSI[32], True), ('npx open-council-cli demo', FG, True)]]
+prompt = [[('$ ', ANSI[32], True), (PROMPT, FG, True)]]
 
 # Beats are separated by blank lines; each is revealed whole. The header is the first beat.
 beats, cur = [], []
@@ -80,7 +87,7 @@ def render(rows):
     d.rectangle([0, 0, W, BAR], fill=BARC)
     for i, c in enumerate([(255, 95, 86), (255, 189, 46), (39, 201, 63)]):
         d.ellipse([PAD + i * 22, 11, PAD + i * 22 + 12, 23], fill=c)
-    title = 'council demo'
+    title = 'council'
     d.text(((W - REG.getlength(title)) / 2, 9), title, font=REG, fill=DIM)
     y = BAR + PAD
     for row in rows[-ROWS:]:

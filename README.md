@@ -11,7 +11,7 @@
 
 **[Watch a real council, every objection and sign-off →](docs/replays/README.md)**
 
-Or watch one in your terminal in about a minute, with no setup and no model calls: `npx open-council-cli demo`
+Or point it at your own code. In any git repo with Claude Code installed: `npx open-council-cli review`
 
 [Install](#-install-in-one-line) •
 [Five-minute run](#-your-first-council-in-five-minutes) •
@@ -28,17 +28,24 @@ Or watch one in your terminal in about a minute, with no setup and no model call
 
 </div>
 
-## 🎬 See one before you install
+## 🔎 Have it tear into your change
 
 ```bash
-npx open-council-cli demo
+cd your-repo
+npx open-council-cli review                      # your uncommitted change
+npx open-council-cli review --base origin/main   # or this branch since main
+npx open-council-cli review "add rate limiting to the login route"   # or a plan, before you write it
 ```
 
-![council demo: the Chief Engineer's first objection is that the repo's npm test runs zero tests on Node 22, the seats revise until all three sign off, the gates pass, and the run ends BLOCKED rather than claiming done](docs/demo-terminal.gif)
+No config and no setup. The seats are whatever AI CLIs you have (Claude Code alone is enough), the gates come from your `package.json`, `Cargo.toml`, `go.mod` or `pyproject.toml`, and nothing in your repository is written or run. The Lead PM writes down what your change claims to do, the Chief Engineer checks every claim against your code and objects with file:line, and the Chief Architect rules on whether it should ship. It takes a few minutes on the quick profile.
 
-This plays back a real recorded run (solo mode, a small slugify library) at reading pace. Nothing is installed and no model is called. `council demo --html` writes the same run as one page with every reply in full.
+You get a page and a Markdown file that lead with the strongest objections, then every round in full, plus a line to share. `--gist` puts the Markdown in a secret gist with your `gh` and prints the link.
 
-Any session of your own can be shared the same way: `council replay <session>` writes a self-contained HTML page (no scripts, nothing loaded from the network), and `council replay <session> --play` plays it back in the terminal.
+The first change it reviewed was its own. In round 1 the Chief Engineer found that a review could reset the worktree under a session already running in the same repo, left that worktree registered afterwards, and sent untracked files, `.env` included, to the providers without a word. All of it was fixed before this shipped. [Read the whole review](docs/replays/council-review-reviews-itself.md).
+
+![council review playing back in the terminal: the task, each seat's verdict and objections, the sign-off, and what the council found](docs/demo-terminal.gif)
+
+Any session can be shared the same way: `council replay <session>` writes a self-contained HTML page (no scripts, nothing loaded from the network), and `council replay <session> --play` plays it back in the terminal.
 
 ## ⚡ Install in one line
 
@@ -234,7 +241,7 @@ SESSION=$(council open stripe-webhook-idempotency --item 001)   # or --task / --
 council deliberate $SESSION
 ```
 
-`deliberate` runs the whole loop: Lead drafts → Engineer rounds → Architect rulings on questions → tie-breaks → Architect sign-off (zero concerns) → Lead sign-off → finalize. It is resumable. Individual steps are also available: `draft`, `ask`, `tiebreak`, `review`, `signoff`, `finalize`, `status`, `gates`.
+`deliberate` runs the whole loop: Lead drafts → Engineer rounds → Architect rulings on questions → tie-breaks → Architect sign-off (zero concerns) → Lead sign-off → finalize. It is resumable. Individual steps are also available: `draft`, `ask`, `tiebreak`, `architect-review`, `signoff`, `finalize`, `status`, `gates`.
 
 ### 4. Configure verification gates (optional but recommended)
 

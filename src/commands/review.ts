@@ -79,10 +79,15 @@ export function registerReviewCommands(program: Command, ctx: CliContext): void 
       }
       const mins = Math.floor(result.seconds / 60);
       console.log('');
-      console.log(chalk.bold(`The council ${result.outcome === 'STALLED' ? 'could not agree' : 'signed off'} after ${result.rounds} round${result.rounds === 1 ? '' : 's'} (${mins ? `${mins} min ` : ''}${result.seconds % 60} s).`));
+      const took = `${mins ? `${mins} min ` : ''}${result.seconds % 60} s`;
+      const rounds = `${result.rounds} round${result.rounds === 1 ? '' : 's'}`;
+      const last = [...result.replay.rounds].reverse().find(r => r.engineer)?.engineer?.openObjections;
+      console.log(chalk.bold(result.outcome === 'STALLED'
+        ? `After ${rounds} the Chief Engineer still had ${typeof last === 'number' ? `${last} open objection${last === 1 ? '' : 's'}` : 'open objections'} (${took}).`
+        : `All three seats signed off after ${rounds} (${took}).`));
       if (result.top.length) {
-        console.log(chalk.bold('\nWhat it found:'));
-        result.top.forEach((o, i) => console.log(`  ${i + 1}. ${o.headline.replace(/\*\*/g, '')}${o.location ? chalk.dim(` (${o.location})`) : ''}\n     ${chalk.dim(`${o.seat}, round ${o.round}`)}`));
+        console.log(chalk.bold(`\nWhat it found${result.top.length > 3 ? ` (top 3 of ${result.top.length} on the page)` : ''}:`));
+        result.top.slice(0, 3).forEach((o, i) => console.log(`  ${i + 1}. ${o.headline.replace(/\*\*/g, '')}${o.location ? chalk.dim(` (${o.location})`) : ''}\n     ${chalk.dim(`${o.seat}, round ${o.round}`)}`));
       } else {
         console.log('\nThe council raised no objections.');
       }

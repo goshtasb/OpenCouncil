@@ -15,7 +15,8 @@ export function renderReplayMarkdown(r: SessionReplay, options: { top?: TopObjec
   const out: string[] = [];
   out.push(`## Council review: ${r.slug}`, '');
   const rounds = r.rounds.filter(x => x.engineer).length;
-  out.push(`Outcome: **${r.status}** after ${rounds} round${rounds === 1 ? '' : 's'} (${r.profile} profile, base \`${r.baseSha.slice(0, 7)}\`).`, '');
+  const meaning = r.status === 'STALLED' ? ': the seats did not all sign off, so it would not ship as is' : r.status === 'AWAITING_APPROVAL' || r.status === 'APPROVED' ? ': all three seats signed off' : '';
+  out.push(`Outcome: **${r.status}** after ${rounds} round${rounds === 1 ? '' : 's'}${meaning} (${r.profile} profile, base \`${r.baseSha.slice(0, 7)}\`).`, '');
   if (options.top && options.top.length) {
     out.push('### What the council found', '');
     options.top.forEach((o, i) => {
