@@ -9,7 +9,8 @@ const lib = require('../dist/index.js');
 
 const bin = path.join(__dirname, '..', 'bin', 'council.js');
 const run = (cwd, ...args) => spawnSync(process.execPath, [bin, ...args], { cwd, env: { ...process.env, COUNCIL_HOME: home }, encoding: 'utf8' });
-const demoDir = path.join(__dirname, '..', 'demo', 'slugify-empty-and-accents');
+// A real recorded session (run 1 of the ten solo runs, machine paths scrubbed).
+const demoDir = path.join(__dirname, 'fixtures', 'slugify-empty-and-accents');
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'council-replay-'));
 
 function copyTree(src, dest) {
@@ -21,14 +22,13 @@ function copyTree(src, dest) {
   }
 }
 
-test('demo plays the recorded run at once when piped: task, the Node 22 objection, sign-off, gate and outcome', () => {
-  const r = run(tmp(), 'demo');
+test('replay --play prints a recorded run at once when piped: task, the Node 22 objection, sign-off, gate and outcome', () => {
+  const r = run(tmp(), 'replay', demoDir, '--play');
   assert.equal(r.status, 0, r.stderr);
   assert.doesNotMatch(r.stdout, /\u001b\[/, 'no colour codes when stdout is not a terminal');
-  assert.match(r.stdout, /No models are called/);
   assert.match(r.stdout, /slugify\(''\) throws/);
   assert.match(r.stdout, /Round 1: SHIP WITH CHANGES, 1 open objection/);
-  assert.match(r.stdout, /npm test\s+already fails at the baseline|npm test already fails at the baseline/);
+  assert.match(r.stdout, /npm test\s+already fails at the baseline/);
   assert.match(r.stdout, /Final sign-off on v4: SIGN-OFF/);
   assert.match(r.stdout, /APPROVE 47d99f76/);
   assert.match(r.stdout, /test: npm test\s+PASS \(7 of 7 tests pass, 0 fail\)/);
@@ -38,18 +38,18 @@ test('demo plays the recorded run at once when piped: task, the Node 22 objectio
   assert.ok(r.stdout.indexOf('a0b2282') < r.stdout.indexOf('1dab67c'));
 });
 
-test('demo works outside a git repository, with no .council config', () => {
+test('replay of a session directory works outside a git repository, with no .council config', () => {
   const dir = tmp();
-  const r = run(dir, 'demo', '--fast');
+  const r = run(dir, 'replay', demoDir, '--play', '--fast');
   assert.equal(r.status, 0, r.stderr);
   assert.ok(!fs.existsSync(path.join(dir, '.council')));
 });
 
-test('demo --html writes one self-contained page with every reply and no local paths', () => {
+test('replay writes one self-contained page with every reply and no local paths', () => {
   const dir = tmp();
-  const r = run(dir, 'demo', '--html');
+  const r = run(dir, 'replay', demoDir, '--out', 'out/page.html');
   assert.equal(r.status, 0, r.stderr);
-  const html = fs.readFileSync(path.join(dir, 'council-demo.html'), 'utf8');
+  const html = fs.readFileSync(path.join(dir, 'out', 'page.html'), 'utf8');
   assert.match(html, /^<!doctype html>/);
   assert.match(html, /<title>Council replay: slugify-empty-and-accents<\/title>/);
   assert.doesNotMatch(html, /<script/i);
@@ -58,10 +58,6 @@ test('demo --html writes one self-contained page with every reply and no local p
   for (const n of [1, 2, 3, 4]) assert.match(html, new RegExp(`<h2>Round ${n}</h2>`));
   assert.match(html, /MODULE_NOT_FOUND/);
   assert.match(html, /<h2>Why it ended BLOCKED<\/h2>/);
-
-  const custom = run(dir, 'demo', '--html', 'out/page.html');
-  assert.equal(custom.status, 0, custom.stderr);
-  assert.ok(fs.existsSync(path.join(dir, 'out', 'page.html')));
 });
 
 test('replay writes a session as HTML by session id or by directory, and plays it with --play', () => {
@@ -133,14 +129,14 @@ test('scrub shortens home and council paths so a replay can be shared', () => {
   assert.equal(lib.scrub('see /home/ana/code/repo'), 'see ~/code/repo');
 });
 
-test('the demo session ships in the npm package', () => {
+test('the recorded fixture is complete, tracked, free of machine paths, and not shipped to npm', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
-  assert.ok(pkg.files.includes('demo'));
+  assert.ok(!pkg.files.some(f => /test|fixtures/.test(f)));
   for (const f of ['meta.json', 'HISTORY.log', 'STATUS.json', 'task.md']) assert.ok(fs.existsSync(path.join(demoDir, f)), `missing ${f}`);
-  const tracked = require('child_process').execFileSync('git', ['ls-files', 'demo'], { cwd: path.join(__dirname, '..') }).toString();
-  assert.match(tracked, /HISTORY\.log/, 'HISTORY.log must be committed, or the demo loses its timeline');
+  const tracked = require('child_process').execFileSync('git', ['ls-files', 'test/fixtures'], { cwd: path.join(__dirname, '..') }).toString();
+  assert.match(tracked, /HISTORY\.log/, 'HISTORY.log must be committed (*.log is ignored repo-wide)');
   const all = [];
   const walk = d => fs.readdirSync(d).forEach(n => { const p = path.join(d, n); fs.statSync(p).isDirectory() ? walk(p) : all.push(fs.readFileSync(p, 'utf8')); });
   walk(demoDir);
-  assert.doesNotMatch(all.join('\n'), /\/root\/|\/tmp\/claude|\/home\/[a-z]/, 'no machine paths in the shipped recording');
+  assert.doesNotMatch(all.join('\n'), /\/root\/|\/tmp\/claude|\/home\/[a-z]/, 'no machine paths in the recording');
 });
