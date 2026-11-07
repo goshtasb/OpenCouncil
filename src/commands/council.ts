@@ -1,4 +1,5 @@
 import { Command } from 'commander';
+import { CouncilConfig } from '../types.js';
 import * as fs from 'fs';
 import { CouncilEngine } from '../engine/council.js';
 import { DeliberationEngine } from '../engine/deliberation.js';
@@ -7,6 +8,15 @@ import { ArchitectureReviewEngine } from '../engine/review.js';
 import { LeadSignoffEngine } from '../engine/signoff.js';
 import { logger } from '../utils/logger.js';
 import { CliContext, action, readStdin } from './shared.js';
+
+/** Prints the Chief Architect's 12-point review of a session's latest draft. */
+export async function printArchitectReview(config: CouncilConfig, sessionId: string): Promise<void> {
+  const res = await new ArchitectureReviewEngine(config).runReview(sessionId);
+  console.log(`\nArchitecture Review Verdict: ${res.verdict}`);
+  console.log(`Required Concerns: ${res.requiredConcerns}, Advisory Concerns: ${res.advisoryConcerns}`);
+  for (const c of res.concerns) console.log(`CONCERN ${c.id}: ${c.type} — ${c.principle} — ${c.description}`);
+  console.log(`SUMMARY: ${res.summary}`);
+}
 
 export function registerCouncilCommands(program: Command, ctx: CliContext): void {
   program
@@ -76,15 +86,9 @@ export function registerCouncilCommands(program: Command, ctx: CliContext): void
     }));
 
   program
-    .command('review <session>')
-    .description('Invoke the Chief Architect for 12-point industry standards sign-off')
-    .action(action(async (sessionId: string) => {
-      const res = await new ArchitectureReviewEngine(ctx.config).runReview(sessionId);
-      console.log(`\nArchitecture Review Verdict: ${res.verdict}`);
-      console.log(`Required Concerns: ${res.requiredConcerns}, Advisory Concerns: ${res.advisoryConcerns}`);
-      for (const c of res.concerns) console.log(`CONCERN ${c.id}: ${c.type} — ${c.principle} — ${c.description}`);
-      console.log(`SUMMARY: ${res.summary}`);
-    }));
+    .command('architect-review <session>')
+    .description('Invoke the Chief Architect for 12-point industry standards sign-off (was `council review <session>`)')
+    .action(action(async (sessionId: string) => printArchitectReview(ctx.config, sessionId)));
 
   program
     .command('signoff <session>')

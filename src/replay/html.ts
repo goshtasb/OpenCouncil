@@ -1,5 +1,6 @@
 import { SessionReplay } from './session-replay.js';
 import { escapeHtml, renderMarkdown } from './markdown.js';
+import type { TopObjection } from '../review/quick-review.js';
 
 const SEATS = {
   pm: { name: 'Lead PM', cls: 'pm' },
@@ -19,6 +20,8 @@ function seatBlock(seat: keyof typeof SEATS, title: string, body: string, verdic
 function fold(summary: string, inner: string): string {
   return `<details><summary>${escapeHtml(summary)}</summary>${inner}</details>`;
 }
+
+const renderInline = (text: string) => renderMarkdown(text).replace(/^<p>|<\/p>$/g, '');
 
 const pre = (text: string) => `<pre><code>${escapeHtml(text)}</code></pre>`;
 
@@ -42,11 +45,13 @@ blockquote{margin:8px 0;padding-left:12px;border-left:3px solid var(--line);colo
 .table{overflow-x:auto}table{border-collapse:collapse;margin:8px 0;font-size:14px}th,td{border:1px solid var(--line);padding:4px 8px;text-align:left;vertical-align:top}
 details{margin:10px 0}summary{cursor:pointer;color:var(--muted);font-weight:600}details[open]>summary{margin-bottom:8px}
 .timeline td:first-child{font-family:ui-monospace,Menlo,monospace;color:var(--muted);white-space:nowrap}
+h2+.seat{margin-top:8px}.share{margin:20px 0;padding:12px 16px;border:1px dashed var(--line);border-radius:8px}.share .label{font-weight:600;margin-bottom:6px}
+.share textarea{width:100%;font:14px/1.45 ui-monospace,Menlo,monospace;background:var(--code);color:var(--fg);border:0;border-radius:6px;padding:8px;resize:vertical}
 footer{margin-top:48px;color:var(--muted);font-size:14px}a{color:var(--eng)}
 `;
 
 /** One self-contained HTML page for a session: no scripts, no external requests, every seat reply rendered from its file. */
-export function renderReplayHtml(r: SessionReplay, options: { note?: string } = {}): string {
+export function renderReplayHtml(r: SessionReplay, options: { note?: string; top?: TopObjection[]; share?: string } = {}): string {
   const outcomeClass = r.status === 'DONE' || r.status === 'MERGED' ? 'ok' : r.status === 'BLOCKED' || r.status === 'STALLED' ? 'bad' : 'warn';
   const parts: string[] = [];
   parts.push(`<h1>Council replay: ${escapeHtml(r.slug)}</h1>`);
@@ -54,6 +59,14 @@ export function renderReplayHtml(r: SessionReplay, options: { note?: string } = 
     `round budget ${r.maxRounds}${r.signoffRevisions ? ` plus ${r.signoffRevisions} sign-off revision` : ''}.</p>`);
   parts.push(`<span class="outcome ${outcomeClass}">Outcome: ${escapeHtml(r.status)}</span>`);
   if (options.note) parts.push(`<div class="md">${renderMarkdown(options.note)}</div>`);
+  if (options.top && options.top.length) {
+    parts.push('<h2>What the council found</h2>' + options.top.map((o, i) =>
+      seatBlock(o.seat === 'Chief Engineer' ? 'eng' : 'arch', `objection ${i + 1}, round ${o.round}${o.location ? ` · ${o.location}` : ''}`,
+        `<p><strong>${renderInline(o.headline)}</strong></p>${o.evidence && o.evidence !== o.headline ? `<p>${renderInline(o.evidence)}</p>` : ''}`)).join(''));
+  }
+  if (options.share) {
+    parts.push(`<div class="share"><div class="label">Share it</div><textarea readonly rows="3" aria-label="Share line">${escapeHtml(options.share)}</textarea></div>`);
+  }
   parts.push('<p class="lede">Every seat reply below is the text the harness saved, rendered as written. Nothing is summarised.</p>');
 
   parts.push('<h2>The task</h2>' + `<blockquote>${renderMarkdown(r.task)}</blockquote>`);

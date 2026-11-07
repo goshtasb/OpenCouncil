@@ -25,3 +25,5 @@ export * from './replay/session-replay.js';
 export * from './replay/markdown.js';
 export * from './replay/html.js';
 export * from './replay/play.js';
+export * from './replay/markdown-replay.js';
+export * from './review/quick-review.js';
