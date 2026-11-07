@@ -1,0 +1,30 @@
+name: Council review
+
+# Every pull request on this repo gets an Open Council review as one comment, using the action in this repo.
+# It runs on the maintainer's own Claude plan (the CLAUDE_CODE_OAUTH_TOKEN secret) and only for branches in this repo:
+# pull requests from forks get no secrets, so the action skips them with a notice.
+# Add the `council-review` label to run it again after new commits.
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review, labeled]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: council-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    if: github.event.action != 'labeled' || github.event.label.name == 'council-review'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: ./
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

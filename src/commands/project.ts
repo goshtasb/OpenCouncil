@@ -12,6 +12,7 @@ import { projectStateDir } from '../utils/paths.js';
 import { logger } from '../utils/logger.js';
 import { CliContext, action, copyDir } from './shared.js';
 import { FULL_SEATS, PROVIDER_CLIS, PROVIDER_FIXES, ProviderId, SOLO_SEATS, SeatsPlan, describePlan, detectProviders, planSeats, renderConfig } from '../setup.js';
+import { describeAuth } from '../utils/auth.js';
 
 export type DoctorFix = { kind: 'install' | 'login' | 'model' | 'unknown'; command: string | null };
 
@@ -97,7 +98,9 @@ export function registerProjectCommands(program: Command, ctx: CliContext): void
             });
             if (!/pong/i.test(reply)) throw new Error(`unexpected reply: ${reply.trim().slice(0, 200)}`);
           }
-          logger.success(`${label}: OK`);
+          const auth = describeAuth(seatConfig.provider);
+          logger.success(`${label}: OK, on ${auth.label}`);
+          if (auth.warning) logger.warn(auth.warning);
           if (seat === 'chief_architect' && adapter.canDisableTools === false) {
             logger.warn(`${label}: this provider cannot be run without tools, so the Chief Architect would have repository access. The arbiter is meant to rule only on the text it is given — prefer claude-code, grok-cli or ollama for this seat.`);
           }

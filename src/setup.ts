@@ -3,6 +3,7 @@
 import { getAdapter } from './adapters/registry.js';
 import { SeatName } from './utils/prompts.js';
 import { Profile } from './engine/deliberation-prompts.js';
+import { hasGeminiKey } from './utils/auth.js';
 
 export type ProviderId = 'claude-code' | 'grok-cli' | 'antigravity' | 'gemini-cli' | 'ollama';
 export type CouncilMode = 'full' | 'solo' | 'mixed' | 'none';
@@ -71,14 +72,17 @@ export async function detectProviders(): Promise<Set<ProviderId>> {
  * - Lead PM: Antigravity (Gemini) when present, otherwise Claude Code on sonnet.
  * - Chief Architect: Grok when present (zero-tool verified), otherwise Claude Code on sonnet with tools off.
  * Antigravity and gemini-cli never hold the Architect seat: they cannot be stripped of tools.
+ * When a Gemini API key (or Vertex credentials) is set and gemini-cli is installed, the Lead PM goes to gemini-cli,
+ * because Antigravity signs in only through the browser and cannot use a key.
  */
-export function planSeats(available: Set<string>): SeatsPlan {
+export function planSeats(available: Set<string>, env: Record<string, string | undefined> = process.env): SeatsPlan {
   const has = (p: ProviderId) => available.has(p);
   const notes: string[] = [];
+  const geminiOnKey = hasGeminiKey(env) && has('gemini-cli');
   if (available.size === 0) {
     return { mode: 'none', seats: { ...FULL_SEATS }, notes: ['No provider CLI was found on PATH. The default three-CLI config was written; run `council doctor` for the install command of each seat.'] };
   }
-  if (has('claude-code') && has('antigravity') && has('grok-cli')) {
+  if (has('claude-code') && has('antigravity') && has('grok-cli') && !geminiOnKey) {
     return { mode: 'full', seats: { ...FULL_SEATS }, notes: ['Claude Code, Antigravity and Grok are all installed: one CLI per seat.'] };
   }
   if (has('claude-code') && !has('antigravity') && !has('grok-cli') && !has('gemini-cli')) {
@@ -93,7 +97,10 @@ export function planSeats(available: Set<string>): SeatsPlan {
     seats.chief_engineer = { provider: fallback!, model: DEFAULT_MODELS[fallback!] };
     notes.push(`Claude Code is not installed. The Chief Engineer seat was given to ${fallback}; autonomous execution has only been verified on Claude Code. Install Claude Code: ${PROVIDER_FIXES['claude-code'].install}`);
   }
-  if (has('antigravity')) {
+  if (geminiOnKey) {
+    seats.lead_pm = { provider: 'gemini-cli', model: DEFAULT_MODELS['gemini-cli'] };
+    if (has('antigravity')) notes.push('A Gemini API key is set and Antigravity cannot use one, so the Lead PM seat runs on gemini-cli with that key.');
+  } else if (has('antigravity')) {
     seats.lead_pm = { provider: 'antigravity', model: DEFAULT_MODELS.antigravity };
   } else if (has('gemini-cli')) {
     seats.lead_pm = { provider: 'gemini-cli', model: DEFAULT_MODELS['gemini-cli'] };

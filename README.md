@@ -46,7 +46,14 @@ npx open-council-cli review --base origin/main                       # or this b
 npx open-council-cli review "add rate limiting to the login route"   # or a plan, before you write any code
 ```
 
-**You need:** Node 18 or newer, [Claude Code](https://claude.com/claude-code) installed and signed in (run `claude` once), and macOS, Linux or WSL. A review runs on your Claude plan, not an API key, and uses its quota like any other Claude Code session. At the default two rounds it takes about four minutes.
+**You need:** Node 18 or newer, [Claude Code](https://claude.com/claude-code), and macOS, Linux or WSL. At the default two rounds a review takes about four minutes. It runs on your own account, one of two ways:
+
+| | For | Set up | What it costs |
+| :--- | :--- | :--- | :--- |
+| **Your Claude plan** | You, on your own machine or your own repo | Run `claude` once and sign in (Pro, Max, Team or Enterprise) | Your plan's usage, like any other Claude Code session |
+| **Your own API key** | Teams and companies | `export ANTHROPIC_API_KEY=...` (Bedrock and Vertex work too, through Claude Code's own settings) | Billed to your key: roughly $1 to $2.50 for a two-round review of a normal pull request. That is an estimate from one measured run, a four-round review of a large diff that cost about $3.65 |
+
+Before the seats start, the review prints which login each one will use. If `ANTHROPIC_API_KEY` is set, Claude Code bills that key, not your plan, and the review says so. Open Council never reads, stores or sends a credential; each AI CLI signs in by itself.
 
 **What happens:**
 
@@ -74,6 +81,52 @@ The first change it reviewed was its own. In round 1 the Chief Engineer found th
 
 <sub>That review, played back with `council replay <session> --play`.</sub>
 
+## 🤖 Review every pull request
+
+The same review runs in GitHub Actions and posts what the council found as one comment on each pull request, with `file:line` objections first and a link to the full replay. Re-runs edit that comment instead of adding another. Every pull request in this repository gets one.
+
+1. Pick a login and add it as a repository secret:
+   - **Your Claude plan**, for a repo only you work in: run `claude setup-token`, then `gh secret set CLAUDE_CODE_OAUTH_TOKEN` and paste the token.
+   - **Your own API key**, for a team or organization repo: `gh secret set ANTHROPIC_API_KEY`. Anthropic recommends a key rather than one person's plan token for anything shared.
+2. Add `.github/workflows/council-review.yml`:
+
+```yaml
+name: Council review
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review, labeled]
+permissions:
+  contents: read
+  pull-requests: write
+concurrency:
+  group: council-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  review:
+    if: github.event.action != 'labeled' || github.event.label.name == 'council-review'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: goshtasb/OpenCouncil@main
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}   # or:
+          # anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
+3. Open a pull request. To review it again after new commits, add the `council-review` label.
+
+| Input | Default | What it does |
+| :--- | :--- | :--- |
+| `claude_code_oauth_token` | | Your plan token from `claude setup-token` |
+| `anthropic_api_key` | | Your own Anthropic API key; used ahead of the plan token when both are set |
+| `rounds` | `2` | Round budget, 2 to 4 |
+| `github_token` | `github.token` | Posts the comment; needs `pull-requests: write` |
+
+It skips, with a notice and a green check, pull requests from forks (GitHub gives them no secrets), drafts, and runs with no login. The seats run in Claude Code's read-only plan mode on the runner, and the full replay is kept as the `open-council-review` artifact and in the run summary. Each review uses about four minutes of your plan or your key.
+
 ## ⚡ Install in one line
 
 Only Claude Code installed? That is enough. `init` detects which CLIs you have and puts every seat on Claude Code when it is the only one (solo mode).
@@ -98,7 +151,7 @@ npx skills add goshtasb/OpenCouncil
 
 Node 18+, macOS or Linux. More options under [Other install methods](#-other-install-methods).
 
-**What it costs you:** a paid Claude Code plan is enough (solo mode). A review takes about four minutes; a full council about 5 to 40. Both use your plan's quota, not API keys. See [Honest limits](#-honest-limits) before your first run.
+**What it costs you:** a paid Claude Code plan is enough (solo mode), or your own API key. A review takes about four minutes; a full council about 5 to 40. Both use your plan's quota or your key. See [Honest limits](#-honest-limits) before your first run.
 
 ## 📘 Step-by-step guide: the full council
 
@@ -203,7 +256,7 @@ council replay $SESSION --play           # play it back in the terminal at readi
 
 - **The debate produces a verified pull request, not an answer.** After you approve the PRD, the Chief Engineer implements it in an isolated clone, the harness merges your base branch, runs your verification gates, and opens the PR. Anything that fails is reported as `BLOCKED`, never as done.
 - **Sign-off is unanimous and bound to one SHA-256, and the gates are commands.** A document reaches you only when all three seats signed off the byte-identical file: Engineer with zero objections, Architect with zero concerns, Lead last. `finalize` and `approve` re-check the hash. Lint, tests, audits and scans are commands with exit codes, not a model's opinion of itself.
-- **It runs on the subscriptions you already pay for.** Claude Code, Grok, Antigravity (Gemini): the CLIs, not API keys. Zero tokens billed outside your plans.
+- **It runs on accounts you already have.** Claude Code, Grok and Gemini CLIs on your own plans, or your own API keys for a team. Nothing is billed to anyone else, and Open Council never touches a credential.
 
 ## 🏛️ It wrote a feature for its own repository
 
@@ -239,7 +292,7 @@ A council that went wrong is just as useful here. Post yours in [Discussions →
 - Live runs so far are single digits. Before v0.2.0, **one in five stalled** without producing anything. v0.2.0 writes the last draft and the open objections on a stall, arbitrates early when objections stop dropping, and retries a seat that returns nothing once. Whether that moves the stall rate is not yet known; the numbers will be updated here as runs accumulate.
 - Solo mode (every seat on Claude Code) is new in v0.2.0: the seats are told apart by persona, model and tool access, not by vendor. Two live runs so far, on one small task: one stalled on review churn (which changed the review rule), one signed off in a round and shipped a PR. That is not a rate.
 - macOS and Linux only; gates run through a POSIX shell. CI covers Node 18/20/22 on Ubuntu and Node 22 on macOS.
-- `gemini-cli` is unusable on current individual Gemini tiers; use the Antigravity CLI (`agy`) for Gemini seats.
+- `gemini-cli` is unusable on current individual Gemini sign-ins; use the Antigravity CLI (`agy`) for Gemini seats, or give `gemini-cli` a `GEMINI_API_KEY`. Antigravity can't use an API key, so with a key set and `gemini-cli` installed the Lead PM seat moves to `gemini-cli`.
 - The Ollama adapter is implemented but **experimental**: it has never completed a live council ([#2](https://github.com/goshtasb/OpenCouncil/issues/2)).
 - Neither Antigravity nor `gemini-cli` can be stripped of tools, so neither may hold the zero-tool Architect seat. `init` never assigns them there and `doctor` warns if you do.
 
@@ -284,7 +337,7 @@ A document reaches you only when all three have signed off **the byte-identical 
 * **Unanimous, zero-concern, hash-bound sign-off**: the Operator only sees a PRD that the Engineer ratified, the Architect signed off with zero REQUIRED and zero ADVISORY concerns, and the Lead signed off, all on the same SHA-256.
 * **12-point industry standards review**: SOC 2/ISO 27001 change management, OWASP ASVS + NIST SSDF, SLSA/SBOM supply chain, test pyramid and release engineering, GDPR/DPIA, ISO 42010 ADRs and ISO 29148 requirement quality, SRE SLOs with OpenTelemetry, progressive delivery and expand-contract migrations, WCAG 2.2 AA and ICU i18n, SemVer/OpenAPI/RFC 9457 contracts, p95 and cost budgets, OWASP LLM Top 10. The quick profile audits the six starred points.
 * **Engineering standards**: `.council/standards/` (manifest, architecture, coding practices, documentation) reaches every seat; seats cite rules by number, name and section.
-* **Subscription-first, zero API keys**: drives the CLIs you already pay for.
+* **Your plan or your own key**: drives the CLIs you already pay for, signed in with your plan or your own API key.
 * **Verified hands-off execution**: the Chief Engineer commits on `council/<slug>` in an isolated clone; blockers go to the Architect and failed checks back to the Engineer (bounded by `execution_attempts`). The harness checks for commits and a clean tree, runs your gates, pushes, opens the PR, optionally enables auto-merge.
 * **Verified against what will land**: the harness merges the current tip of `base_branch` before the gates run, so a change that builds alone but breaks once merged is caught before CI. A conflict blocks the PR instead of pushing a broken merge.
 * **Machine-enforced gates**: `verification.gates` is an ordered list of commands (lint, typecheck, tests, `npm audit`, license check, CycloneDX SBOM, gitleaks, semgrep, axe, performance budgets), each with a timeout, a `required` flag and the standard it enforces. Every run writes an immutable evidence record and a gate summary into the pull request body.

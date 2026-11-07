@@ -1,0 +1,148 @@
+name: 'Open Council review'
+description: 'Three AI seats argue over each pull request and post their file:line objections as one comment. Runs on your own Claude plan or your own API key.'
+author: 'Ashkan Goshtasb'
+branding:
+  icon: 'users'
+  color: 'purple'
+
+inputs:
+  claude_code_oauth_token:
+    description: 'Your Claude plan token, from `claude setup-token` (Pro, Max, Team or Enterprise). Best for a repo only you work in.'
+    required: false
+    default: ''
+  anthropic_api_key:
+    description: 'Your own Anthropic API key. Recommended for team or organization repos. Used ahead of the plan token when both are set.'
+    required: false
+    default: ''
+  rounds:
+    description: 'Round budget, 2 to 4. Each round is a few minutes and uses more of your plan or key.'
+    required: false
+    default: '2'
+  github_token:
+    description: 'Token used to post the comment. Needs pull-requests: write.'
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  outcome:
+    description: 'AWAITING_APPROVAL when every seat signed off, STALLED when objections were still open, SKIPPED when no review ran.'
+    value: ${{ steps.review.outputs.outcome || steps.guard.outputs.outcome }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Decide whether to review
+      id: guard
+      shell: bash
+      env:
+        EVENT: ${{ github.event_name }}
+        HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        BASE_REPO: ${{ github.repository }}
+        DRAFT: ${{ github.event.pull_request.draft }}
+        HAS_TOKEN: ${{ inputs.claude_code_oauth_token != '' }}
+        HAS_KEY: ${{ inputs.anthropic_api_key != '' }}
+      run: |
+        skip() { echo "run=false" >> "$GITHUB_OUTPUT"; echo "outcome=SKIPPED" >> "$GITHUB_OUTPUT"; echo "::notice title=Open Council::$1"; echo "Open Council review skipped: $1" >> "$GITHUB_STEP_SUMMARY"; exit 0; }
+        [ "$EVENT" = "pull_request" ] || skip "this action runs on pull_request events only; the event was $EVENT."
+        if [ "$HEAD_REPO" != "$BASE_REPO" ]; then skip "pull requests from forks get no secrets, so there is no Claude login to review with."; fi
+        if [ "$DRAFT" = "true" ]; then skip "the pull request is a draft. Mark it ready for review to run the council."; fi
+        if [ "$HAS_TOKEN" != "true" ] && [ "$HAS_KEY" != "true" ]; then
+          echo "::warning title=Open Council::No Claude login. Add a CLAUDE_CODE_OAUTH_TOKEN secret (from \`claude setup-token\`) or an ANTHROPIC_API_KEY secret and pass it to the action."
+          skip "no claude_code_oauth_token or anthropic_api_key was given."
+        fi
+        echo "run=true" >> "$GITHUB_OUTPUT"
+
+    - name: Set up Node
+      if: steps.guard.outputs.run == 'true'
+      uses: actions/setup-node@v5
+      with:
+        node-version: '22'
+
+    - name: Install Claude Code and Open Council
+      if: steps.guard.outputs.run == 'true'
+      shell: bash
+      env:
+        ACTION_DIR: ${{ github.action_path }}
+      run: |
+        curl -fsSL https://claude.ai/install.sh | bash >/dev/null
+        export PATH="$HOME/.local/bin:$PATH"
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        claude --version
+        cd "$ACTION_DIR"
+        npm ci --ignore-scripts --no-audit --no-fund >/dev/null
+        npm run build >/dev/null
+
+    - name: Run the council
+      id: review
+      if: steps.guard.outputs.run == 'true'
+      shell: bash
+      env:
+        ACTION_DIR: ${{ github.action_path }}
+        CLAUDE_CODE_OAUTH_TOKEN: ${{ inputs.claude_code_oauth_token }}
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic_api_key }}
+        BASE_REF: ${{ github.event.pull_request.base.ref }}
+        ROUNDS: ${{ inputs.rounds }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: |
+        # A pasted secret can carry a stray newline or space; a token never contains whitespace.
+        ANTHROPIC_API_KEY=$(printf %s "$ANTHROPIC_API_KEY" | tr -d '[:space:]')
+        CLAUDE_CODE_OAUTH_TOKEN=$(printf %s "$CLAUDE_CODE_OAUTH_TOKEN" | tr -d '[:space:]')
+        export ANTHROPIC_API_KEY CLAUDE_CODE_OAUTH_TOKEN
+        # Say what the secret looks like, never what it is: the commonest 401 is the wrong kind of token in the wrong input.
+        if [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+          case "$CLAUDE_CODE_OAUTH_TOKEN" in
+            sk-ant-oat*) echo "Plan token: ${#CLAUDE_CODE_OAUTH_TOKEN} characters, in the format \`claude setup-token\` prints." ;;
+            sk-ant-api*) echo "::warning title=Open Council::claude_code_oauth_token holds an API key. Pass it as anthropic_api_key instead." ;;
+            *) echo "::warning title=Open Council::claude_code_oauth_token (${#CLAUDE_CODE_OAUTH_TOKEN} characters) does not start like a token from \`claude setup-token\`." ;;
+          esac
+        fi
+        # An empty variable still counts as set for some tools; drop whichever login was not given.
+        [ -n "$ANTHROPIC_API_KEY" ] || unset ANTHROPIC_API_KEY
+        [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ] || unset CLAUDE_CODE_OAUTH_TOKEN
+        export COUNCIL_HOME="$RUNNER_TEMP/open-council-home"
+        OUT="$RUNNER_TEMP/open-council-review"
+        echo "out=$OUT" >> "$GITHUB_OUTPUT"
+        git fetch --no-tags --quiet origin "$BASE_REF"
+        set +e
+        node "$ACTION_DIR/bin/council.js" review --base "origin/$BASE_REF" --rounds "$ROUNDS" --no-open \
+          --out "$OUT" --comment "$OUT/comment.md" --replay-url "$RUN_URL" 2>&1 | tee "$OUT.log"
+        status=${PIPESTATUS[0]}
+        set -e
+        if [ "$status" -ne 0 ]; then
+          if grep -qiE 'Failed to authenticate|\b401\b|invalid x-api-key|token is invalid|not logged in' "$OUT.log"; then
+            echo "::error title=Open Council::Claude rejected the login. Make a new token with \`claude setup-token\` (or check the API key) and set the repository secret again."
+          else
+            echo "::error title=Open Council::The review did not finish. The last lines of its output are in this step's log."
+          fi
+          exit "$status"
+        fi
+        outcome=$(sed -n 's/^Outcome: \*\*\([A-Z_]*\)\*\*.*/\1/p' "$OUT/review.md" | head -n1)
+        echo "outcome=${outcome:-UNKNOWN}" >> "$GITHUB_OUTPUT"
+        cat "$OUT/review.md" >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Keep the replay
+      if: steps.guard.outputs.run == 'true' && always() && steps.review.outputs.out != ''
+      uses: actions/upload-artifact@v4
+      with:
+        name: open-council-review
+        path: |
+          ${{ steps.review.outputs.out }}/review.html
+          ${{ steps.review.outputs.out }}/review.md
+        if-no-files-found: ignore
+
+    - name: Post or update the comment
+      if: steps.guard.outputs.run == 'true' && steps.review.outcome == 'success'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+        REPO: ${{ github.repository }}
+        PR: ${{ github.event.pull_request.number }}
+        BODY_FILE: ${{ steps.review.outputs.out }}/comment.md
+      run: |
+        marker='<!-- open-council-review -->'
+        id=$(gh api --paginate "repos/$REPO/issues/$PR/comments" --jq ".[] | select(.body | startswith(\"$marker\")) | .id" | tail -n1)
+        if [ -n "$id" ]; then
+          gh api --method PATCH "repos/$REPO/issues/comments/$id" -F body=@"$BODY_FILE" --jq .html_url
+        else
+          gh api --method POST "repos/$REPO/issues/$PR/comments" -F body=@"$BODY_FILE" --jq .html_url
+        fi
