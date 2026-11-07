@@ -66,7 +66,8 @@ test('demo --html writes one self-contained page with every reply and no local p
 
 test('replay writes a session as HTML by session id or by directory, and plays it with --play', () => {
   const repo = makeRepo();
-  const sessions = path.join(lib.projectStateDir(repo), 'sessions');
+  // The CLI keys state by git's top-level path, which is /private/var/... on macOS where the temp dir is /var/...
+  const sessions = path.join(lib.projectStateDir(lib.resolveRepoRoot(repo)), 'sessions');
   copyTree(demoDir, path.join(sessions, '20261106190450-slugify-empty-and-accents'));
 
   const byId = run(repo, 'replay', '20261106190450-slugify-empty-and-accents');
