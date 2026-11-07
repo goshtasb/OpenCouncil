@@ -179,7 +179,10 @@ function engineerObjections(reply: string): { headline: string; evidence: string
   return out;
 }
 
-const LOCATION = /\b[\w./-]+\.[A-Za-z]{1,5}:\d+(?:-\d+)?\b/;
+const LOCATION = /(?<![\w./-])[\w./-]*[\w-]\.[A-Za-z]{1,5}:\d+(?:-\d+)?\b/;
+
+/** The first file:line an objection cites, keeping a leading dot (`.github/...`). */
+export const findLocation = (text: string) => LOCATION.exec(text)?.[0];
 
 /**
  * The objections worth leading with: the Chief Engineer's, earliest round first (later rounds argue over the fix plan),
@@ -190,14 +193,12 @@ export function topObjections(replay: SessionReplay, limit = 3): TopObjection[] 
   for (const round of replay.rounds) {
     if (round.engineer && (round.engineer.openObjections ?? 1) > 0) {
       for (const o of engineerObjections(round.engineer.reply)) {
-        const where = LOCATION.exec(`${o.headline} ${o.evidence}`);
-        all.push({ round: round.n, seat: 'Chief Engineer', headline: o.headline, evidence: o.evidence, location: where?.[0] });
+        all.push({ round: round.n, seat: 'Chief Engineer', headline: o.headline, evidence: o.evidence, location: findLocation(`${o.headline} ${o.evidence}`) });
       }
     }
     if (round.architect) {
       for (const c of round.architect.concerns.filter(c => /REQUIRED/i.test(c.type))) {
-        const where = LOCATION.exec(c.description);
-        all.push({ round: round.n, seat: 'Chief Architect', headline: c.description.split(/(?<=\.)\s/)[0], evidence: c.description, location: where?.[0] });
+        all.push({ round: round.n, seat: 'Chief Architect', headline: c.description.split(/(?<=\.)\s/)[0], evidence: c.description, location: findLocation(c.description) });
       }
     }
   }
