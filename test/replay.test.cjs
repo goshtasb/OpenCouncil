@@ -135,7 +135,9 @@ test('scrub shortens home and council paths so a replay can be shared', () => {
 test('the demo session ships in the npm package', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
   assert.ok(pkg.files.includes('demo'));
-  assert.ok(fs.existsSync(path.join(demoDir, 'meta.json')));
+  for (const f of ['meta.json', 'HISTORY.log', 'STATUS.json', 'task.md']) assert.ok(fs.existsSync(path.join(demoDir, f)), `missing ${f}`);
+  const tracked = require('child_process').execFileSync('git', ['ls-files', 'demo'], { cwd: path.join(__dirname, '..') }).toString();
+  assert.match(tracked, /HISTORY\.log/, 'HISTORY.log must be committed, or the demo loses its timeline');
   const all = [];
   const walk = d => fs.readdirSync(d).forEach(n => { const p = path.join(d, n); fs.statSync(p).isDirectory() ? walk(p) : all.push(fs.readFileSync(p, 'utf8')); });
   walk(demoDir);

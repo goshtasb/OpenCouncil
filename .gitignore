@@ -26,3 +26,6 @@ dist/
 
 # launch drafts (posts, DMs) are for the maintainer, not for the repository
 /launch/
+
+# The recorded demo session keeps its timeline.
+!demo/**/HISTORY.log
