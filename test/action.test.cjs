@@ -110,3 +110,13 @@ test('this repo reviews its own pull requests on the maintainer\'s plan token on
   assert.deepEqual(Object.keys(uses.with), ['claude_code_oauth_token']);
   assert.ok(action.inputs.claude_code_oauth_token && action.inputs.anthropic_api_key, 'the action itself takes either login');
 });
+
+test('a failed seat CLI is reported by name and its last lines, not its whole command line', () => {
+  const { briefError } = require('../dist/commands/shared.js');
+  const err = Object.assign(new Error('Command failed with exit code 1: claude -p ' + 'persona '.repeat(200)), {
+    command: 'claude -p ' + 'persona '.repeat(200), exitCode: 1, stderr: '', stdout: 'Failed to authenticate. API Error: 401 OAuth access token is invalid.'
+  });
+  assert.equal(briefError(err), 'claude exited with code 1:\nFailed to authenticate. API Error: 401 OAuth access token is invalid.');
+  assert.equal(briefError(new Error('plain')), 'plain');
+  assert.match(step('review').run, /rejected the login/);
+});

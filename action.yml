@@ -84,6 +84,10 @@ runs:
         ROUNDS: ${{ inputs.rounds }}
         RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       run: |
+        # A pasted secret can carry a stray newline or space; a token never contains whitespace.
+        ANTHROPIC_API_KEY=$(printf %s "$ANTHROPIC_API_KEY" | tr -d '[:space:]')
+        CLAUDE_CODE_OAUTH_TOKEN=$(printf %s "$CLAUDE_CODE_OAUTH_TOKEN" | tr -d '[:space:]')
+        export ANTHROPIC_API_KEY CLAUDE_CODE_OAUTH_TOKEN
         # An empty variable still counts as set for some tools; drop whichever login was not given.
         [ -n "$ANTHROPIC_API_KEY" ] || unset ANTHROPIC_API_KEY
         [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ] || unset CLAUDE_CODE_OAUTH_TOKEN
@@ -97,7 +101,11 @@ runs:
         status=${PIPESTATUS[0]}
         set -e
         if [ "$status" -ne 0 ]; then
-          echo "::error title=Open Council::The review did not finish. The last lines of its output are in this step's log."
+          if grep -qiE 'Failed to authenticate|\b401\b|invalid x-api-key|token is invalid|not logged in' "$OUT.log"; then
+            echo "::error title=Open Council::Claude rejected the login. Make a new token with \`claude setup-token\` (or check the API key) and set the repository secret again."
+          else
+            echo "::error title=Open Council::The review did not finish. The last lines of its output are in this step's log."
+          fi
           exit "$status"
         fi
         outcome=$(sed -n 's/^Outcome: \*\*\([A-Z_]*\)\*\*.*/\1/p' "$OUT/review.md" | head -n1)
