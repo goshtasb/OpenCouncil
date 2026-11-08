@@ -14,6 +14,7 @@ import { verifyExecution } from './verification.js';
 import { resolveGates, summarizeGates } from './gates.js';
 import { ArchitectQuestionEngine, extractArchitectQuestions, formatArchitectRulings } from './questions.js';
 import { logger } from '../utils/logger.js';
+import { EXECUTION_CLAIMS_INSTRUCTION } from './claims.js';
 
 export type ExecutionOutcome = 'DONE' | 'BLOCKED';
 
@@ -184,6 +185,7 @@ export class ExecutionEngine {
         ? [`The dependency install step, not you, created these untracked files; the harness ignores them when it checks for a clean tree. Leave them uncommitted: ${installArtifacts.map(line => line.replace(/^\S+\s+/, '')).join(', ')}.`]
         : []),
       'Write reproduction tests before applying fixes.',
+      EXECUTION_CLAIMS_INSTRUCTION,
       'When fully finished, write DONE.md. If a rule you need is undefined, write BLOCKED.md containing `QUESTION FOR ARCHITECT: <question>` lines; the Chief Architect answers and you will be resumed.',
       '',
       ...formatArchitectRulings(this.sessionManager.loadArchitectRulings(sessionId)),

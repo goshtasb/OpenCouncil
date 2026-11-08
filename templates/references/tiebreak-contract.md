@@ -10,6 +10,8 @@ For EVERY numbered objection, output exactly one line in numeric order:
 - `OVERRULED`: The Lead's approach is upheld. The Chief Engineer must withdraw the objection.
 - `MEASURE`: The disagreement is empirical. State the exact command, test, or benchmark that must be executed, and what each outcome decides.
 
+Never `OVERRULED` because a comment, document or the Lead says the behaviour is handled outside this repository: that claim is unverified. Rule `MEASURE` with the test in this repository that would settle it, or `STANDS`.
+
 Name the principle you rule from: a constitution invariant, a Project Engineering Standard (by number, name and section), or a point of the 12-point industry standards checklist.
 
 End with:

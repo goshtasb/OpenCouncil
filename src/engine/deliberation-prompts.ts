@@ -2,6 +2,7 @@
 import * as fs from 'fs';
 import { CouncilConfig, CouncilSessionMeta } from '../types.js';
 import { hasHeading } from './verdicts.js';
+import { ENGINEER_CLAIMS_INSTRUCTION, LEAD_CLAIMS_INSTRUCTION } from './claims.js';
 
 export type Profile = 'full' | 'quick';
 
@@ -48,6 +49,7 @@ export function buildLeadDraftPrompt(input: LeadDraftPromptInput): string {
     input.previousPlan
       ? `Revise the draft. For every objection, ruling or concern above: adopt it and change the draft, or rebut it with cited evidence. Output a section headed "# Response to Objections" addressing each item by number, then a line containing exactly ${REVISED_DOCUMENT_MARKER}, then the complete revised document.`
       : 'Write the complete deliverable.',
+    LEAD_CLAIMS_INSTRUCTION,
     'The document must use exactly these top-level headings, in this order: "# Product Brief", "# PRD", "# Executive Summary". Output only Markdown, with no preamble.',
     ...(input.profile === 'quick' ? [QUICK_LEAD_INSTRUCTION] : []),
     'Print the complete document in your reply. Do not save it to a file, do not use plan-saving tooling, and do not reply with a summary or a path — only the text you print is read.'
@@ -83,6 +85,7 @@ export function buildEngineerRoundPrompt(input: EngineerRoundPromptInput): strin
     ...input.rulings,
     '## Instructions',
     `Your working directory (${input.worktreePath}) is a clean, read-only checkout at commit ${input.baseSha}. Verify the draft against the code, then reply per the advisory contract: the first two lines must be "VERDICT: ..." and "OPEN OBJECTIONS: <integer>".`,
+    ENGINEER_CLAIMS_INSTRUCTION,
     ...(input.profile === 'quick' ? [QUICK_ENGINEER_INSTRUCTION] : []),
     `${ASK_ARCHITECT_INSTRUCTION} A reply containing such a question does not converge.`
   ].join('\n');
