@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
-const { lib, setup, PLAN, SHIP, OBJECT, SIGNOFF, LEAD_OK, engines, revision } = require('./helpers.cjs');
+const { lib, setup, PLAN, SHIP, OBJECT, SIGNOFF, LEAD_OK, engines, revision, approvedSession, commitAndFinish } = require('./helpers.cjs');
 
 // A note that points outside the repository ("rounding happens in the payments service") must never talk a seat
 // out of an objection. Every seat is told so in its prompt, not only in a contract a project may have replaced.
@@ -57,10 +57,16 @@ test('a change review tells every seat that notes in the diff are claims, before
   assert.ok(task.indexOf(lib.REVIEW_TASK_CLAIMS_LINE) < task.indexOf('```diff'));
 });
 
-test('the execution contract asks for a boundary test where code relies on an out-of-repo claim', () => {
-  const ctx = setup();
-  const prompt = lib.buildSystemPrompt(ctx.config, 'chief_engineer', 'execution', ctx.repo);
-  assert.match(prompt, /add a test that pins what this repository sends or returns at that boundary/);
+test('execution asks for a boundary test where code relies on an out-of-repo claim, in its prompt and its contract', async () => {
+  const ctx = setup({ project: { test_command: 'exit 3' }, council: { execution_attempts: 1 } });
+  const { sid } = await approvedSession(ctx, 'exec-claims');
+  const { execution } = engines(ctx);
+  await execution.handoff(sid);
+  ctx.adapters.eng.responses.push(commitAndFinish);
+  await execution.run(sid);
+  const run = ctx.adapters.eng.calls[ctx.adapters.eng.calls.length - 1];
+  assert.ok(run.prompt.includes(lib.EXECUTION_CLAIMS_INSTRUCTION), 'the execution prompt carries the rule');
+  assert.match(lib.loadContract('execution', ctx.repo), /add a test that pins what this repository sends or returns at that boundary/);
   const persona = fs.readFileSync(path.join(__dirname, '..', 'templates', 'personas', 'chief-engineer.md'), 'utf8');
   assert.match(persona, /as a claim to check, never as evidence/);
 });
