@@ -16,31 +16,29 @@ export class AntigravityModelError extends Error {
     super(
       `Antigravity does not offer the model "${model}". Set that seat's model in .council/config.yml ` +
       `(seats.lead_pm.model by default) to one that \`agy models\` lists` +
-      (available.length ? `, for example ${available.map(m => `"${m}"`).join(', ')}.` : '.')
+      (available.length ? `, for example ${available.slice(0, 6).map(m => `"${m}"`).join(', ')}.` : '.')
     );
     this.name = 'AntigravityModelError';
   }
 }
 
 /**
- * When `agy` is given a model it does not offer, it prints "Available models:" and the list.
- * Returns that list (possibly empty), or null when the output is not a model rejection.
- * With `requireModelNamed`, the marker only counts near the top of output that is short or names
- * the rejected model, so a seat's real answer that quotes the phrase (a review of this very
- * adapter, say) is not mistaken for a rejection.
+ * When `agy` is given a model it does not offer, it ends its output with an "Available models:" line
+ * and the models it offers, two-space indented, one per line (test/fixtures/agy-model-rejection.txt
+ * is a real capture). Detection keys on that block alone, not on agy's wording before it, and only
+ * when the block ends the output, so a seat's real answer that merely quotes the phrase (a review of
+ * this very adapter, say) is not mistaken for a rejection. Returns the listed models, or null.
  */
-export function parseUnavailableModel(output: string, requireModelNamed?: string): string[] | null {
-  const marker = output.search(/Available models:/i);
-  if (marker === -1) return null;
-  if (requireModelNamed !== undefined) {
-    const nearTop = marker <= 600;
-    const looksLikeRejection = output.slice(0, marker).includes(requireModelNamed) || output.length < 1200;
-    if (!nearTop || !looksLikeRejection) return null;
+export function parseUnavailableModel(output: string): string[] | null {
+  const lines = output.replace(/\s+$/, '').split(/\r?\n/);
+  let marker = -1;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (/^\s*Available models:\s*$/i.test(lines[i])) { marker = i; break; }
   }
-  return output.slice(marker).split('\n').slice(1)
-    .map(line => line.replace(/^[\s*\u2022-]+/, '').trim())
-    .filter(line => line && !/:$/.test(line))
-    .slice(0, 12);
+  if (marker === -1) return null;
+  const entries = lines.slice(marker + 1);
+  if (!entries.length || !entries.every(line => /^\s+\S/.test(line))) return null;
+  return entries.map(line => line.trim());
 }
 
 // Google Antigravity CLI (`agy`), the successor client for Gemini subscriptions.
@@ -113,12 +111,12 @@ async function runForModel(args: string[], cwd: string, timeoutMs: number, model
     // A timeout or an interruption is not a model rejection, even if a partial answer quotes the marker:
     // keep the original error so withTransientRetry can still see it.
     if (err.timedOut || /error: interrupted/.test(output)) throw err;
-    const available = model ? parseUnavailableModel(output, model) : null;
-    if (available) throw new AntigravityModelError(model!, available);
+    const available = parseUnavailableModel(output);
+    if (available) throw new AntigravityModelError(model || '(agy default)', available);
     throw err;
   }
-  // A zero exit is normally an answer; only a short rejection that names the model counts.
-  const available = model ? parseUnavailableModel(stdout, model) : null;
+  // agy's exit code on a rejection is not known, so a zero exit is checked the same way.
+  const available = parseUnavailableModel(stdout);
   if (available) throw new AntigravityModelError(model || '(agy default)', available);
   return stdout;
 }

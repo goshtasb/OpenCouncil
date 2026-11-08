@@ -10,8 +10,12 @@ const {
 } = require('../dist/adapters/antigravity.js');
 const { doctorFix } = require('../dist/commands/project.js');
 
-// agy lists display names; Ashkan confirmed `agy --model "Gemini 4 Argon (High)"` is accepted, so they are valid seat models.
-const REJECTION = (model) => `Error: model "${model}" is not available.\nAvailable models:\n  Gemini 4 Argon (Low)\n  Gemini 4 Argon (High)\n  Gemini 3.8 Flash (High)\n  Claude Opus 5.5\n`;
+// A real capture of the list agy printed for `--model gemini-3.1-pro-high` (Nov 2026). The line
+// before it and agy's exit code were not captured, so the fake prints an arbitrary line before it
+// and the tests run both exit codes. agy lists display names, and `agy --model "Gemini 4 Argon (High)"`
+// is accepted, so they are valid seat models.
+const FIXTURE = fs.readFileSync(path.join(__dirname, 'fixtures', 'agy-model-rejection.txt'), 'utf8');
+const REJECTION = (model) => `Some wording agy uses that names ${model} and its settings\n${FIXTURE}`;
 
 /**
  * A stand-in `agy` on PATH: answers "ok <model>" for the models it offers and prints agy's
@@ -26,9 +30,7 @@ const args = process.argv.slice(2);
 const i = args.indexOf('--model');
 const model = i === -1 ? '' : args[i + 1];
 require('fs').appendFileSync(process.env.FAKE_AGY_LOG, model + '\\n');
-if (process.env.FAKE_AGY_INTERRUPT) { process.stdout.write(${JSON.stringify(`${'A long answer. '.repeat(100)}
-It quotes "Available models:" here.
-`)}); console.error('error: interrupted'); process.exit(1); }
+if (process.env.FAKE_AGY_INTERRUPT) { process.stdout.write(${JSON.stringify(`${'A long answer. '.repeat(100)}\n${FIXTURE}`)}); console.error('error: interrupted'); process.exit(1); }
 if (!process.env.FAKE_AGY_REJECT_ALL && (model === '${ANTIGRAVITY_DEFAULT_MODEL}' || model === 'gemini-3.8-flash-high')) { console.log('ok ' + model); process.exit(0); }
 process.stdout.write(${JSON.stringify(REJECTION('MODEL'))}.replace('MODEL', model));
 process.exit(Number(process.env.FAKE_AGY_REJECT_EXIT || 1));
@@ -57,12 +59,16 @@ test('the Antigravity default is a model current agy offers, everywhere it is wr
   }
 });
 
-test('parseUnavailableModel reads agy\'s model list, and ignores an answer that only quotes the phrase', () => {
-  assert.deepEqual(parseUnavailableModel(REJECTION('gemini-9')), ['Gemini 4 Argon (Low)', 'Gemini 4 Argon (High)', 'Gemini 3.8 Flash (High)', 'Claude Opus 5.5']);
+test('parseUnavailableModel reads agy\'s real model list, and ignores an answer that only quotes the phrase', () => {
+  const models = parseUnavailableModel(REJECTION('gemini-3.1-pro-high'));
+  assert.equal(models.length, 13);
+  assert.deepEqual(models.slice(0, 2), ['Gemini 4 Argon (Medium)', 'Gemini 4 Argon (High)']);
+  assert.equal(models[12], 'GPT-OSS 120B (Medium)');
+  assert.deepEqual(parseUnavailableModel(FIXTURE), models, 'the wording before the list does not matter');
   assert.equal(parseUnavailableModel('All good, nothing to see.'), null);
-  assert.deepEqual(parseUnavailableModel(REJECTION('gemini-9'), 'gemini-9').length, 4);
-  const answer = `${'The adapter looks fine. '.repeat(40)}\nIt checks for "Available models:" in agy's output.`;
-  assert.equal(parseUnavailableModel(answer, 'gemini-9'), null, 'a long answer that quotes the marker is an answer');
+  assert.equal(parseUnavailableModel('It checks for "Available models:" in agy\'s output.'), null);
+  assert.equal(parseUnavailableModel(`${FIXTURE}\nSo pick one of those for the seat.`), null, 'an answer that quotes the list and goes on is an answer');
+  assert.equal(parseUnavailableModel('Available models:\n'), null, 'the marker with no list is not a rejection');
 });
 
 test('a model agy does not offer fails with the model name and the fix, not the raw dump', async () => {
@@ -73,7 +79,7 @@ test('a model agy does not offer fails with the model name and the fix, not the 
     assert.match(err.message, /does not offer the model "gemini-9"/);
     assert.match(err.message, /seats\.lead_pm\.model/);
     assert.match(err.message, /`agy models`/);
-    assert.match(err.message, /"Gemini 4 Argon \(High\)"/);
+    assert.match(err.message, /for example "Gemini 4 Argon \(Medium\)", "Gemini 4 Argon \(High\)"/);
     assert.equal(lib.isTransientFailure(err), false, 'a missing model is not retried as transient');
     assert.equal(doctorFix('antigravity', err).command, 'agy models', 'doctor points at the model list');
     assert.deepEqual(calls(), ['gemini-9'], 'an unknown model is not swapped for another');
