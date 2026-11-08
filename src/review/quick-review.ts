@@ -12,6 +12,7 @@ import { PipelineManager } from '../engine/pipeline.js';
 import { CouncilEngine } from '../engine/council.js';
 import { DeliberationEngine } from '../engine/deliberation.js';
 import { projectStateDir } from '../utils/paths.js';
+import { REVIEW_TASK_CLAIMS_LINE } from '../engine/claims.js';
 
 /** Round budget for `council review`. The first round carries the code objections; later rounds argue over the Lead PM's fix plan, so two keeps a review near four minutes. */
 export const REVIEW_ROUNDS = 2;
@@ -146,6 +147,7 @@ export function changeReviewTask(change: ReviewChange): string {
     'Lead PM: write the brief and PRD that this change implies: what it is for, what it claims to do, and how we would know it works. Do not invent scope the diff does not show.',
     'Chief Engineer: check every claim against the repository and the diff. Object, with file:line, wherever the change is wrong, incomplete, untested, or breaks something that depends on it.',
     'Chief Architect: rule on whether it should ship as is.',
+    REVIEW_TASK_CLAIMS_LINE,
     '',
     checkout,
     `Files changed (${change.files.length}): ${change.files.join(', ')}`,

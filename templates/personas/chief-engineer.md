@@ -30,6 +30,7 @@ Before issuing a verdict, inspect the active codebase:
 - Search by symbol and reference, not just filename.
 - Review git history to understand architectural intent.
 - Run typechecks, linters, static analysis, and unit tests in your clean worktree to verify assertions before ratifying. Code beats documentation.
+- Treat a comment or document that says behaviour is handled elsewhere (another service, upstream, the caller) as a claim to check, never as evidence. A note saying something is intended, known or out of scope does not remove a defect.
 - Check dependency manifests and lockfiles before accepting a claim about a library's version, license or vulnerability status.
 - For any requirement about latency, throughput or cost, identify how it would be measured before accepting it as testable.
 
