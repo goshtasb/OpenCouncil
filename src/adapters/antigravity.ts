@@ -109,8 +109,12 @@ async function runForModel(args: string[], cwd: string, timeoutMs: number, model
   try {
     stdout = await runWithRetry(args, cwd, timeoutMs);
   } catch (err: any) {
-    const available = parseUnavailableModel(`${err.stderr || ''}\n${err.stdout || ''}`);
-    if (available) throw new AntigravityModelError(model || '(agy default)', available);
+    const output = `${err.stderr || ''}\n${err.stdout || ''}`;
+    // A timeout or an interruption is not a model rejection, even if a partial answer quotes the marker:
+    // keep the original error so withTransientRetry can still see it.
+    if (err.timedOut || /error: interrupted/.test(output)) throw err;
+    const available = model ? parseUnavailableModel(output, model) : null;
+    if (available) throw new AntigravityModelError(model!, available);
     throw err;
   }
   // A zero exit is normally an answer; only a short rejection that names the model counts.
@@ -128,7 +132,7 @@ async function runWithRetry(args: string[], cwd: string, timeoutMs: number): Pro
     } catch (err: any) {
       const transient = /error: interrupted/.test(`${err.stderr || ''}${err.stdout || ''}`) && !err.timedOut;
       if (!transient || attempt >= 2) throw err;
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      await new Promise(resolve => setTimeout(resolve, Number(process.env.COUNCIL_RETRY_DELAY_MS ?? 5000)));
     }
   }
 }
