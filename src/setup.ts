@@ -4,6 +4,7 @@ import { getAdapter } from './adapters/registry.js';
 import { SeatName } from './utils/prompts.js';
 import { Profile } from './engine/deliberation-prompts.js';
 import { hasGeminiKey } from './utils/auth.js';
+import { ANTIGRAVITY_DEFAULT_MODEL } from './adapters/antigravity.js';
 
 export type ProviderId = 'claude-code' | 'grok-cli' | 'antigravity' | 'gemini-cli' | 'ollama';
 export type CouncilMode = 'full' | 'solo' | 'mixed' | 'none';
@@ -36,7 +37,7 @@ export const PROVIDER_FIXES: Record<ProviderId, { install: string; login: string
 export const DEFAULT_MODELS: Record<ProviderId, string> = {
   'claude-code': 'opus',
   'grok-cli': 'grok-4.6',
-  antigravity: 'gemini-3.1-pro-high',
+  antigravity: ANTIGRAVITY_DEFAULT_MODEL,
   'gemini-cli': 'gemini-2.5-pro',
   ollama: 'llama3'
 };

@@ -1,6 +1,48 @@
 import execa from 'execa';
 import { AgentAdapter, AgentRunOptions, requireOutput, withPreamble } from './base.js';
 
+/** The model `council init` writes for an Antigravity seat. `agy models` lists what the installed CLI offers. */
+export const ANTIGRAVITY_DEFAULT_MODEL = 'gemini-4-argon-high';
+
+/**
+ * Model ids earlier releases wrote into config.yml that current `agy` builds no longer offer.
+ * A seat still set to one of these is retried once on the default instead of failing the session.
+ */
+export const RETIRED_ANTIGRAVITY_MODELS = new Set(['gemini-3.1-pro-high']);
+
+/** Thrown when `agy` rejects the configured model. The message names the model and the fix, not agy's raw dump. */
+export class AntigravityModelError extends Error {
+  constructor(readonly model: string, readonly available: string[]) {
+    super(
+      `Antigravity does not offer the model "${model}". Set that seat's model in .council/config.yml ` +
+      `(seats.lead_pm.model by default) to one that \`agy models\` lists` +
+      (available.length ? `, for example ${available.map(m => `"${m}"`).join(', ')}.` : '.')
+    );
+    this.name = 'AntigravityModelError';
+  }
+}
+
+/**
+ * When `agy` is given a model it does not offer, it prints "Available models:" and the list.
+ * Returns that list (possibly empty), or null when the output is not a model rejection.
+ * With `requireModelNamed`, the marker only counts near the top of output that is short or names
+ * the rejected model, so a seat's real answer that quotes the phrase (a review of this very
+ * adapter, say) is not mistaken for a rejection.
+ */
+export function parseUnavailableModel(output: string, requireModelNamed?: string): string[] | null {
+  const marker = output.search(/Available models:/i);
+  if (marker === -1) return null;
+  if (requireModelNamed !== undefined) {
+    const nearTop = marker <= 600;
+    const looksLikeRejection = output.slice(0, marker).includes(requireModelNamed) || output.length < 1200;
+    if (!nearTop || !looksLikeRejection) return null;
+  }
+  return output.slice(marker).split('\n').slice(1)
+    .map(line => line.replace(/^[\s*\u2022-]+/, '').trim())
+    .filter(line => line && !/:$/.test(line))
+    .slice(0, 12);
+}
+
 // Google Antigravity CLI (`agy`), the successor client for Gemini subscriptions.
 export class AntigravityAdapter implements AgentAdapter {
   readonly name = 'antigravity';
@@ -41,20 +83,40 @@ export class AntigravityAdapter implements AgentAdapter {
       // No-tool seat: plan mode without approvals, so every tool call is denied.
       args.push('--mode', 'plan');
     }
-    if (options.model) {
-      args.push('--model', options.model);
-    }
-    if (options.appendArgs) {
-      args.push(...options.appendArgs);
-    }
+    const baseArgs = args;
+    const argsFor = (model?: string) => [...baseArgs, ...(model ? ['--model', model] : []), ...(options.appendArgs || [])];
+    const timeoutMs = (timeoutSeconds + 30) * 1000;
 
-    const stdout = await runWithRetry(args, options.cwd, (timeoutSeconds + 30) * 1000);
+    let stdout: string;
+    try {
+      stdout = await runForModel(argsFor(options.model), options.cwd, timeoutMs, options.model);
+    } catch (err) {
+      if (!(err instanceof AntigravityModelError) || !options.model || !RETIRED_ANTIGRAVITY_MODELS.has(options.model)) throw err;
+      console.log(`[HARNESS] antigravity no longer offers "${options.model}"; retrying on "${ANTIGRAVITY_DEFAULT_MODEL}". Set that model in .council/config.yml to skip this retry.`);
+      stdout = await runForModel(argsFor(ANTIGRAVITY_DEFAULT_MODEL), options.cwd, timeoutMs, ANTIGRAVITY_DEFAULT_MODEL);
+    }
     // agy exits 0 even when a denied tool call prevented any answer.
     if (/^\S+: no output produced/.test(stdout.trim())) {
       throw new Error(`antigravity produced no answer: ${stdout.trim()}`);
     }
     return requireOutput(this.name, stdout);
   }
+}
+
+/** Runs agy and turns a model rejection, whether agy exits 0 or not, into an AntigravityModelError. */
+async function runForModel(args: string[], cwd: string, timeoutMs: number, model: string | undefined): Promise<string> {
+  let stdout: string;
+  try {
+    stdout = await runWithRetry(args, cwd, timeoutMs);
+  } catch (err: any) {
+    const available = parseUnavailableModel(`${err.stderr || ''}\n${err.stdout || ''}`);
+    if (available) throw new AntigravityModelError(model || '(agy default)', available);
+    throw err;
+  }
+  // A zero exit is normally an answer; only a short rejection that names the model counts.
+  const available = model ? parseUnavailableModel(stdout, model) : null;
+  if (available) throw new AntigravityModelError(model || '(agy default)', available);
+  return stdout;
 }
 
 // agy intermittently exits with "error: interrupted" (observed 2 of 3 attempts on identical input); retry once.
