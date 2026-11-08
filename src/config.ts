@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import yaml from 'js-yaml';
 import { CouncilConfig } from './types.js';
+import { ANTIGRAVITY_DEFAULT_MODEL } from './adapters/antigravity.js';
 
 export const DEFAULT_CONFIG: CouncilConfig = {
   version: 1,
@@ -26,7 +27,7 @@ export const DEFAULT_CONFIG: CouncilConfig = {
   seats: {
     lead_pm: {
       provider: 'antigravity',
-      model: 'gemini-3.1-pro-high',
+      model: ANTIGRAVITY_DEFAULT_MODEL,
       persona: '.council/personas/lead-pm.md'
     },
     chief_engineer: {

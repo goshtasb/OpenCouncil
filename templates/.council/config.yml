@@ -27,7 +27,7 @@ council:
 seats:
   lead_pm:
     provider: "antigravity"
-    model: "gemini-3.1-pro-high"    # `agy models` lists valid ids
+    model: "gemini-4-argon-high"    # `agy models` lists valid ids
     persona: ".council/personas/lead-pm.md"
 
   chief_engineer:

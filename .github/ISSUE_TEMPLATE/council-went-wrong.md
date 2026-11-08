@@ -8,7 +8,7 @@ labels: bug
 <!-- Stalled? Looped? Agreed on something that was wrong? Reported DONE when it wasn't? -->
 
 **Seats and models**
-<!-- e.g. lead_pm: antigravity/gemini-3.1-pro-high, chief_engineer: claude-code/opus, chief_architect: grok-cli/grok-4.6 -->
+<!-- e.g. lead_pm: antigravity/gemini-4-argon-high, chief_engineer: claude-code/opus, chief_architect: grok-cli/grok-4.6 -->
 
 **How far it got**
 <!-- rounds used, verdicts (SHIP IT / objections), architect verdict, final status -->

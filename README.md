@@ -359,7 +359,7 @@ A document reaches you only when all three have signed off **the byte-identical 
 seats:
   lead_pm:
     provider: "antigravity"
-    model: "gemini-3.1-pro-high"
+    model: "gemini-4-argon-high"
   chief_engineer:
     provider: "claude-code"
     model: "opus"

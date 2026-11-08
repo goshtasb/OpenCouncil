@@ -5,6 +5,10 @@ versions follow [SemVer](https://semver.org/). Get notified of new versions with
 
 ## [Unreleased]
 
+### Fixed
+- The Antigravity seat defaults to `gemini-4-argon-high`. Current `agy` builds no longer offer `gemini-3.1-pro-high`, so every review with an Antigravity seat failed at its first call. A config.yml still set to the old id is retried once on the new default, with a line saying so.
+- When `agy` rejects a seat's model, the error names the model, the config line to change and the models `agy` offers, instead of agy's raw output.
+
 ## [0.3.1] — 2026-11-07
 
 Run the council on every pull request, on your own Claude plan or your own API key.
