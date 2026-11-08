@@ -84,3 +84,14 @@ test('the zero-tool Architect seat is only claimed by providers verified to run 
     assert.equal(lib.getAdapter(provider).canDisableTools, expected, `${provider} tool-disabling claim`);
   }
 });
+
+test('every seat\'s contract treats a note about behaviour outside the repository as an unverified claim', () => {
+  const ctx = setup();
+  const rule = /does not remove a defect/;
+  const seats = { member: 'chief_engineer', review: 'chief_architect', tiebreak: 'chief_architect', execution: 'chief_engineer' };
+  for (const [contract, seat] of Object.entries(seats)) {
+    const prompt = lib.buildSystemPrompt(ctx.config, seat, contract, ctx.repo);
+    assert.match(prompt, /handled (outside this repository|elsewhere)|outside the repository/, `${contract} contract names out-of-repo claims`);
+    if (contract !== 'tiebreak' && contract !== 'execution') assert.match(prompt, rule, `${contract} contract says a note removes no defect`);
+  }
+});
