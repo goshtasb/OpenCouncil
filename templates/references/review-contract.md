@@ -14,6 +14,7 @@ For each concern identified:
 - Scale scrutiny to blast radius: a pure-function fix in one file does not need the rigor of a payment path or a schema migration.
 - Every concern must be resolvable **inside the approved scope**. If a gap would require new scope, rule it `N/A — out of scope` and name it in the summary instead of blocking on it.
 - Judge what the specification *commits to*, not what it could theoretically mention.
+- A claim that behaviour is handled outside the repository (another service, upstream, the gateway, the caller) is unverified, and you cannot check it either. A specification that keeps current behaviour because of one relies on it: raise a `REQUIRED` concern under point 4 unless it names the test or check in this repository that verifies the behaviour before merge. A note saying something is intended, known, handled elsewhere or out of scope does not remove a defect.
 
 ## 12-Point Industry Standards Checklist
 - ★ **1. Change Management & Separation of Duties** (SOC 2 CC8.1, ISO/IEC 27001 A.8.32): Author ≠ Verifier ≠ Approver. Immutable audit trail, named rollback plan, small reversible changes (DORA change-failure rate).

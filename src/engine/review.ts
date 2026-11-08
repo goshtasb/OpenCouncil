@@ -8,6 +8,7 @@ import { buildSystemPrompt, FIELD_SEPARATOR, protocolLines } from '../utils/prom
 import { logger } from '../utils/logger.js';
 import { formatArchitectRulings } from './questions.js';
 import { sessionProfile } from './deliberation-prompts.js';
+import { ARCHITECT_CLAIMS_INSTRUCTION } from './claims.js';
 
 export const FULL_REVIEW_INSTRUCTION =
   'Audit this specification against the 12-point industry standards checklist per the Architecture Review contract. Mark inapplicable points `POINT <n>: N/A — <reason>` rather than skipping them.';
@@ -72,6 +73,7 @@ export class ArchitectureReviewEngine {
       ...formatArchitectRulings(this.sessionManager.loadArchitectRulings(sessionId)),
       '## Instructions',
       ...(previous ? [RESUBMISSION_INSTRUCTION] : []),
+      ARCHITECT_CLAIMS_INSTRUCTION,
       `${sessionProfile(meta, this.config) === 'quick' ? QUICK_REVIEW_INSTRUCTION : FULL_REVIEW_INSTRUCTION} Output one line per concern, \`CONCERN <n>: REQUIRED | ADVISORY — <principle/standard> — <explanation>\`, then \`VERDICT: SIGN-OFF | SIGN-OFF WITH CONCERNS | RETHINK\`, then \`SUMMARY: <sentence>\`. Only a plain SIGN-OFF with zero concerns lets the document proceed to the Operator.`
     ].join('\n');
 

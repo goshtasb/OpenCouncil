@@ -4,6 +4,7 @@ import { CouncilConfig, TieBreakResult, TieBreakRuling } from '../types.js';
 import { SessionManager, roundDirName } from './session.js';
 import { getAdapter } from '../adapters/registry.js';
 import { buildSystemPrompt, FIELD_SEPARATOR, protocolLines } from '../utils/prompts.js';
+import { TIEBREAK_CLAIMS_INSTRUCTION } from './claims.js';
 import { logger } from '../utils/logger.js';
 import { formatArchitectRulings } from './questions.js';
 
@@ -64,7 +65,8 @@ export class TieBreakEngine {
       '',
       ...formatArchitectRulings(this.sessionManager.loadArchitectRulings(sessionId)),
       '## Instructions',
-      'Rule on every numbered objection per the Arbiter contract. Plain text only: one line per objection, `RULING <n>: STANDS | OVERRULED | MEASURE — <reason>`, then `SUMMARY: <sentence>`.'
+      'Rule on every numbered objection per the Arbiter contract. Plain text only: one line per objection, `RULING <n>: STANDS | OVERRULED | MEASURE — <reason>`, then `SUMMARY: <sentence>`.',
+      TIEBREAK_CLAIMS_INSTRUCTION
     ].join('\n');
 
     fs.writeFileSync(path.join(tbDir, 'prompt.md'), prompt, 'utf8');
