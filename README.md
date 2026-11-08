@@ -390,7 +390,7 @@ Still stuck? Open an issue with the output of `council doctor` and, if you can, 
 
 ```bash
 npm install -g open-council-cli                # global install from npm; the commands are `council` and `open-council`
-npm install -g https://github.com/goshtasb/OpenCouncil/releases/download/v0.3.1/open-council-cli-0.3.1.tgz   # release tarball, no registry
+npm install -g https://github.com/goshtasb/OpenCouncil/releases/download/v0.3.2/open-council-cli-0.3.2.tgz   # release tarball, no registry
 git clone https://github.com/goshtasb/OpenCouncil && cd OpenCouncil && npm ci && npm run build   # from source; see CONTRIBUTING.md
 ```
 
