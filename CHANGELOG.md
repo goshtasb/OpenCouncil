@@ -5,6 +5,13 @@ versions follow [SemVer](https://semver.org/). Get notified of new versions with
 
 ## [Unreleased]
 
+## [0.3.2] — 2026-11-08
+
+The Gemini seat works again on current Antigravity builds, and every seat treats notes that point outside the repo as unverified claims.
+
+### Changed
+- Every seat (Lead, Engineer, Architect, tie-break, execution and `council review`) is told that a comment, docstring, README, commit message or task line saying behaviour is handled outside the checkout is an unverified claim, not proof. A note saying something is intended or handled elsewhere does not remove a defect from review.
+
 ### Fixed
 - The Antigravity seat defaults to `gemini-4-argon-high`. Current `agy` builds no longer offer `gemini-3.1-pro-high`, so every review with an Antigravity seat failed at its first call. A config.yml still set to the old id is retried once on the new default, with a line saying so.
 - When `agy` rejects a seat's model, the error names the model, the config line to change and the models `agy` offers, instead of agy's raw output.
@@ -111,7 +118,8 @@ First public release.
 - Documents a seat saves instead of printing are recovered.
 - The zero-tool Architect seat stays tool-free across providers.
 
-[Unreleased]: https://github.com/goshtasb/OpenCouncil/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/goshtasb/OpenCouncil/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/goshtasb/OpenCouncil/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/goshtasb/OpenCouncil/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/goshtasb/OpenCouncil/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/goshtasb/OpenCouncil/compare/v0.2.0...v0.2.1
