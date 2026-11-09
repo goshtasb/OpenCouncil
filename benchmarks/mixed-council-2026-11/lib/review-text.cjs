@@ -17,12 +17,13 @@ const add = (seat, kind, blocking, text, summary = false) => {
   sections.push({ id: `S${sections.length + 1}`, seat, kind, blocking, summary, text: t });
 };
 
-/** One finding per numbered or bulleted item (or paragraph). */
+/** One finding per top-level numbered or bulleted item; indented sub-points stay with their item. */
+const TOP_ITEM = /^ ?(\*\*)?\d+[.)]\s|^ ?[-*•]\s(?!\s)/;
 function items(text) {
   const out = []; let cur = [];
   const flush = () => { const s = cur.join('\n').trim(); if (s) out.push(s); cur = []; };
   for (const line of text.split('\n')) {
-    if (/^\s*(\*\*)?\d+[.)]\s|^\s*[-*•]\s(?!\s)/.test(line) && !/^\s{4,}/.test(line)) flush();
+    if (TOP_ITEM.test(line)) flush();
     cur.push(line);
   }
   flush();
@@ -47,14 +48,23 @@ if (arm === 'single') {
     if (/^round-/.test(d)) {
       let open = 1;
       try { open = JSON.parse(read(path.join(s, d, 'verdict.json'))).openObjections; } catch { /* no verdict */ }
-      const body = reply.split(/\n\s*\**\s*Not checked/i)[0];
-      const parts = body.split(/\n\s*(?:#+\s*|\*\*)?Objections\b[^\n]*\n/i);
-      if (parts.length > 1 && open !== 0) {
-        add('engineer', `Chief Engineer ${d}, text before the objections`, false, parts[0]);
-        for (const f of items(parts.slice(1).join('\n'))) add('engineer', `Chief Engineer ${d}, objection`, true, f);
+      // The advisory contract: VERDICT and OPEN OBJECTIONS lines, what was checked, the numbered objections
+      // (sometimes under an Objections heading), then optional notes and a Not checked line.
+      let body = reply.split(/\n\s*\**\s*Not checked/i)[0], notes = '';
+      const nm = /^[ \t]*(?:#+\s*|\*\*)?Notes\b/im.exec(body);
+      if (nm && nm.index > 0) { notes = body.slice(nm.index); body = body.slice(0, nm.index); }
+      let pre = body, objs = '';
+      const heading = body.split(/\n\s*(?:#+\s*|\*\*)?Objections\b[^\n]*\n/i);
+      if (heading.length > 1) { pre = heading[0]; objs = heading.slice(1).join('\n'); }
+      else { const m = /^(\*\*)?\d+[.)]\s/m.exec(body); if (m) { pre = body.slice(0, m.index); objs = body.slice(m.index); } }
+      const list = open === 0 ? [] : heading.length > 1 ? items(objs) : items(objs).filter(f => /^(\*\*)?\d+[.)]\s/.test(f));
+      if (list.length) {
+        add('engineer', `Chief Engineer ${d}, text before the objections`, false, pre);
+        for (const f of list) add('engineer', `Chief Engineer ${d}, objection`, true, f);
       } else {
-        add('engineer', `Chief Engineer ${d}${open === 0 ? ' (no open objections)' : ''}`, open !== 0 && parts.length === 1, body);
+        add('engineer', `Chief Engineer ${d}${open === 0 ? ' (no open objections)' : ''}`, open !== 0, body);
       }
+      add('engineer', `Chief Engineer ${d}, notes`, false, notes);
     } else if (/^review-/.test(d)) {
       const blocks = reply.split(/\n(?=\s*CONCERN\s+\d+)/);
       if (!/^\s*CONCERN\s+\d+/.test(blocks[0])) add('architect', `Chief Architect ${d}, preamble`, false, blocks.shift());

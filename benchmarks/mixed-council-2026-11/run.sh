@@ -39,7 +39,7 @@ runs_for() { case $1 in mixed) echo "${RUNS_MIXED:-$RUNS}";; solo) echo "${RUNS_
 has_arm() { case " $ARMS " in *" $1 "*) return 0;; *) return 1;; esac; }
 
 # ---------------------------------------------------------------- environment
-for v in ANTHROPIC_API_KEY XAI_API_KEY GROK_API_KEY; do
+for v in ANTHROPIC_API_KEY XAI_API_KEY GROK_API_KEY GEMINI_API_KEY GOOGLE_API_KEY GOOGLE_GENAI_USE_VERTEXAI; do
   if [ -n "$(printenv "$v" 2>/dev/null)" ]; then echo "Ignoring $v for this run, so the seats use your plan sign-ins."; unset "$v"; fi
 done
 unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID 2>/dev/null
@@ -172,8 +172,8 @@ if has_arm mixed; then
 
   say "-- Grok: $("$REAL_GROK" --version 2>&1 | head -1)"
   if [ -z "${GROK_MODEL:-}" ]; then
-    GROK_MODEL=$("$REAL_GROK" models 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const ids=[...new Set(s.match(/\bgrok-\d+(?:\.\d+)?\b(?![-\w])/g)||[])];ids.sort((a,b)=>parseFloat(a.slice(5))-parseFloat(b.slice(5)));process.stdout.write(ids.pop()||"")})')
-    [ -n "$GROK_MODEL" ] || GROK_MODEL=grok-4.6
+    GROK_MODEL=$("$REAL_GROK" models 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const ids=[...new Set(s.match(/\bgrok-\d+(?:\.\d+)?\b(?![-\w.])/g)||[])];const v=x=>x.slice(5).split(".").map(Number);ids.sort((a,b)=>{const[p,q]=[v(a),v(b)];return (p[0]-q[0])||((p[1]||0)-(q[1]||0))});process.stdout.write(ids.pop()||"")})')
+    [ -n "$GROK_MODEL" ] || die "Could not read a grok-N.N model from 'grok models'. Set GROK_MODEL to one it lists, then rerun."
   fi
   pf=$(mktemp); echo "Reply with the single word ok." > "$pf"
   # Same shape as the Chief Architect's call: every tool denied.
@@ -205,11 +205,14 @@ say "Judges: $JUDGES (Claude $JUDGE_MODEL is the pre-registered one)"
 # ---------------------------------------------------------------- judges
 # Each judge reads the labelled review (review.md) and the task's known issues, in an empty folder with
 # no tools, and answers in JSON. Claude Opus is the pre-registered judge; Gemini is the cross-check.
+# The same note the council's Claude adapter adds when a seat has no tools, so the judge answers instead of trying to look.
+NO_TOOLS_NOTE='You have no tools in this session: no file access, no shell, no web. Judge only the text in the prompt and answer in full; never say you will look something up.'
 judge_run() { # <run dir> <task> <arm> <judge>
   local out=$1 task=$2 arm=$3 j=$4 jd; jd=$(mktemp -d "${TMPDIR:-/tmp}/cj.XXXXXX")
   node "$BENCH/lib/judge.cjs" prompt "$out" "$BENCH/tasks.json" "$task" > "$out/judge-$j.prompt.md"
   if [ "$j" = claude ]; then
-    (cd "$jd" && with_timeout "$JUDGE_TIMEOUT" "$REAL_CLAUDE" -p --model "$JUDGE_MODEL" --tools '' --strict-mcp-config --output-format json < "$out/judge-$j.prompt.md") > "$jd/a.json" 2> "$out/judge-$j.err"
+    (cd "$jd" && with_timeout "$JUDGE_TIMEOUT" "$REAL_CLAUDE" -p --model "$JUDGE_MODEL" --tools '' --strict-mcp-config --output-format json \
+        --append-system-prompt "$NO_TOOLS_NOTE" < "$out/judge-$j.prompt.md") > "$jd/a.json" 2> "$out/judge-$j.err"
     node "$BENCH/lib/claude-json.cjs" "$jd/a.json" "$out/judge-calls.jsonl" "$JUDGE_MODEL" 0 $? > "$out/judge-$j.answer.txt" 2>/dev/null
   else
     (cd "$jd" && with_timeout "$JUDGE_TIMEOUT" "$REAL_AGY" -p "$(cat "$out/judge-$j.prompt.md")" --output-format text --print-timeout "${JUDGE_TIMEOUT}s" \

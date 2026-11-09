@@ -14,7 +14,7 @@ if (!task) { console.error(`unknown task ${taskId}`); process.exit(2); }
 if (mode === 'prompt') {
   const golden = task.golden.map(g => `${g.id}: ${g.comment}`).join('\n');
   const tpl = read(path.join(__dirname, 'judge-prompt.md'));
-  process.stdout.write(tpl.replace('{{GOLDEN}}', golden).replace('{{REVIEW}}', read(path.join(runDir, 'review.md'))));
+  process.stdout.write(tpl.replace('{{GOLDEN}}', () => golden).replace('{{REVIEW}}', () => read(path.join(runDir, 'review.md'))));
   process.exit(0);
 }
 

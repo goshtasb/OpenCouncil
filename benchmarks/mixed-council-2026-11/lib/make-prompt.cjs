@@ -9,5 +9,5 @@ const git = args => execFileSync('git', args, { cwd: repo, encoding: 'utf8', max
 const diff = git(['diff', '--no-color', `${base}...HEAD`]).trimEnd();
 const files = git(['diff', '--name-only', `${base}...HEAD`]).split('\n').filter(Boolean);
 process.stdout.write(fs.readFileSync(tpl, 'utf8')
-  .replace('{{BASE}}', base).replace('{{COUNT}}', String(files.length))
-  .replace('{{FILES}}', files.join(', ')).replace('{{DIFF}}', () => diff));
+  .replace('{{BASE}}', () => base).replace('{{COUNT}}', () => String(files.length))
+  .replace('{{FILES}}', () => files.join(', ')).replace('{{DIFF}}', () => diff));
