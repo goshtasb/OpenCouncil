@@ -72,7 +72,8 @@ export function describeSeatError(err: any): { kind: SeatErrorKind; reason: stri
   if (/max(imum)?[ _-]?turns/i.test(text)) return { kind: 'max-turns', reason: `stopped at its turn limit${tail ? ` (${tail})` : ''}` };
   // Only what a CLI prints about its own login counts, so a model's text about logins never drops the provider.
   // stdout can hold model text, so it counts only for Claude Code's own login lines, and only when stdout is that short
-  // message and nothing else: Claude prints its login failure as one or two lines on stdout, where an answer runs longer.
+  // message and nothing else. Claude Code documents no format for these lines, so they are matched only at the start
+  // of a line and only in a short stdout.
   // Everything else, a bare 401 or 403 included, counts only on stderr or execa's exit line, where no model text goes.
   // execa's message repeats stdout, so the exit line is its shortMessage when there is one.
   const CLAUDE_LOGIN = /^(invalid api key|please run \/login|failed to authenticate|oauth (access )?token (is invalid|has expired)|invalid bearer token|not logged in|api error: 40[13]\b)/i;
@@ -81,7 +82,7 @@ export function describeSeatError(err: any): { kind: SeatErrorKind; reason: stri
   const exitLine = typeof err?.shortMessage === 'string' ? err.shortMessage.split(err.command || '\u0000').join('<command>') : message;
   const errText = `${typeof err?.stderr === 'string' ? err.stderr : ''}\n${exitLine}`;
   if (stdoutLogin
-    || /invalid api key|please run \/login|not (logged|signed) in|please (log|sign) ?in|(log|sign) in again|unauthori[sz]ed|authenticat|invalid (x-api-key|token|bearer token)|oauth (access )?token|(token|session|credentials?|login) (has |have )?expired|permission[_ ]denied|\b40[13]\b/i.test(errText)) return { kind: 'login', reason: `is not signed in${tail ? ` (${tail})` : ''}` };
+    || /invalid api key|please run \/login|not (logged|signed) in|please (log|sign) ?in|(log|sign) in again|unauthori[sz]ed|failed to authenticate|not authenticated|authentication (failed|error|required)|authentication_error|invalid (x-api-key|token|bearer token)|oauth (access )?token (is |has )?(invalid|expired|been revoked|revoked)|(token|session|credentials?|login) (has |have )?expired|permission[_ ]denied|\b40[13]\b/i.test(errText)) return { kind: 'login', reason: `is not signed in${tail ? ` (${tail})` : ''}` };
   return { kind: 'error', reason: tail ? `failed: ${tail}` : `exited with code ${err?.exitCode ?? 'unknown'}` };
 }
 

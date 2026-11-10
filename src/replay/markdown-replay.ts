@@ -22,6 +22,7 @@ export function allOverruled(r: Pick<SessionReplay, 'rounds'>): number {
 
 /** What to say when the found list is empty: no objection at all, every one overruled, or a verdict with nothing readable to list. */
 export function nothingFoundText(r: Pick<SessionReplay, 'rounds'>, verdict?: ReviewVerdict): string {
+  if (verdict?.verdict === 'NO VERDICT') return 'No seat reviewed the change, so the council has nothing to report. The rounds below show what each seat returned.';
   if (verdict && verdict.verdict !== 'PASS') return `The review did not pass (${verdict.summary}), but its objections could not be read one by one. Every round below has them in full.`;
   const n = allOverruled(r);
   return n ? `The Chief Engineer raised ${n} objection${n === 1 ? '' : 's'} and the Chief Architect overruled ${n === 1 ? 'it' : 'every one'}, so none stands.` : 'The council raised no objections.';

@@ -212,3 +212,42 @@ test('the HTML page shows the verdict: badge, its colour, the summary, and why a
 test('Claude\'s "API Error: 401" line on its own is a lost login', () => {
   assert.equal(lib.describeSeatError({ stdout: 'API Error: 401 {"type":"error","error":{"type":"authentication_error"}}', exitCode: 1 }).kind, 'login');
 });
+
+test('NO VERDICT: no seat reviewed, the empty list says so, and the Action outputs NO_VERDICT', () => {
+  const r = replay([{ n: 1 }]);
+  const v = lib.reviewVerdict(r);
+  assert.equal(v.verdict, 'NO VERDICT');
+  const text = lib.nothingFoundText(r, v);
+  assert.match(text, /No seat reviewed the change/);
+  assert.doesNotMatch(text, /did not pass|could not be read/);
+  const md = lib.renderReplayMarkdown(r, { top: [], verdict: v });
+  assert.match(md, /Outcome: \*\*NO VERDICT\*\*/);
+  const yml = fs.readFileSync(path.join(__dirname, '..', 'action.yml'), 'utf8');
+  const sed = /outcome=\$\(sed -n '([^']+)'/.exec(yml)[1];
+  const out = spawnSync('bash', ['-c', `outcome=$(printf %s "$MD" | sed -n '${sed}' | head -n1); outcome=\${outcome// /_}; echo "$outcome"`], { env: { ...process.env, MD: md }, encoding: 'utf8' });
+  assert.equal(out.stdout.trim(), 'NO_VERDICT');
+});
+
+test('two new objections in a later round at an earlier objection\'s file:line are not both folded into it', () => {
+  const at9 = (...hs) => [`VERDICT: SHIP WITH CHANGES`, `OPEN OBJECTIONS: ${hs.length}`, '', ...hs.map((h, i) => `${i + 1}. **${h} (src/a.js:9).** Evidence.`)].join('\n');
+  const r = replay([
+    { n: 1, engineer: { reply: at9('The retry never stops'), openObjections: 1 }, tiebreak: ruled('STANDS') },
+    { n: 2, engineer: { reply: at9('The lock is never released', 'The error is swallowed'), openObjections: 2 }, tiebreak: ruled('STANDS', 'STANDS') }
+  ]);
+  // One of round 2's may be the round-1 point restated; the other is new either way.
+  assert.equal(lib.reviewVerdict(r).stands, 2);
+});
+
+test('a severity tag the Chief Engineer puts on its own objection does not show beside the Architect\'s ruling', () => {
+  const r = replay([{ n: 1, engineer: { reply: 'OPEN OBJECTIONS: 1\n\n1. **(MINOR) The text is wrong for NO VERDICT (src/a.js:3).** Evidence.', openObjections: 1 }, tiebreak: ruled('STANDS') }]);
+  const [top] = lib.topObjections(r, 5);
+  assert.match(top.headline, /^The text is wrong/);
+  assert.doesNotMatch(top.headline, /MINOR/);
+});
+
+test('stderr that mentions OAuth or authentication without a failure is not a lost login', () => {
+  assert.equal(lib.describeSeatError({ stderr: 'OAuth token refreshed\nError: connect ECONNRESET', exitCode: 1 }).kind, 'error');
+  assert.equal(lib.describeSeatError({ stderr: 'authentication cache warmed\nsegfault', exitCode: 1 }).kind, 'error');
+  assert.equal(lib.describeSeatError({ stderr: 'Error: OAuth access token is invalid', exitCode: 1 }).kind, 'login');
+  assert.equal(lib.describeSeatError({ stderr: 'Error: authentication failed', exitCode: 1 }).kind, 'login');
+});

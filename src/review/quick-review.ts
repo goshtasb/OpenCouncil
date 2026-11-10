@@ -218,7 +218,14 @@ export function reviewSlug(repo: string, task?: string): string {
 
 
 /** Numbered objections with a bold headline; failing that, plain numbered items whose first sentence is the headline. */
+// A severity tag the Chief Engineer put on its own objection is dropped: the Chief Architect's ruling decides that.
+const untag = (headline: string) => headline.replace(/^\s*[(\[](minor|blocking|major|critical|nit)[)\]][:\s]*/i, '');
+
 function engineerObjections(reply: string): { n: number; headline: string; evidence: string }[] {
+  return readObjections(reply).map(o => ({ ...o, headline: untag(o.headline) }));
+}
+
+function readObjections(reply: string): { n: number; headline: string; evidence: string }[] {
   const bold = objectionHeadlines(reply);
   if (bold.length) return bold;
   const out: { n: number; headline: string; evidence: string }[] = [];
@@ -257,7 +264,8 @@ const asRuling = (r?: string): Ruling | undefined => {
  * - resolved: never upheld, and settled since: the Chief Engineer did not raise it again, ended with no open objection,
  *   or every seat signed off. Shown, never counted.
  * When the Chief Engineer restates an upheld objection in a later round in other words, both cite the same file:line;
- * the later one is folded into the earlier so one defect is not counted twice. Two in the same round are never folded.
+ * the later one is folded into the earlier so one defect is not counted twice. Two in the same round are never folded,
+ * into each other or into the same earlier objection.
  * OVERRULED objections are left out. Of the Chief Architect's own reviews, only the latest one's concerns still count.
  */
 function judgedObjections(replay: SessionReplay): { kept: Judged[]; overruled: number; orphans: Record<'stands' | 'measure' | 'minor' | 'unruled', number> } {
@@ -311,14 +319,19 @@ function judgedObjections(replay: SessionReplay): { kept: Judged[]; overruled: n
     }
   }
   const kept: Judged[] = [];
+  const folded = new Set<string>();
   for (const o of byKey.values()) {
     if (o.final === 'OVERRULED') continue;
     const ruling = o.final === 'STANDS' || o.final === 'MEASURE' || o.final === 'MINOR' ? { ruling: o.final } : {};
     const state: TopObjection['state'] = o.final === 'STANDS' || o.final === 'MEASURE' ? 'blocking'
       : o.final === 'MINOR' ? 'minor'
         : cleared || o.latest !== last?.n ? 'resolved' : 'blocking';
-    // Only a restatement in a later round folds; two objections at one file:line in the same round stay two.
-    if (state === 'blocking' && o.location && kept.some(k => k.state === 'blocking' && k.location === o.location && k.latest !== o.latest)) continue;
+    // Only a restatement in a later round folds, and an earlier objection takes at most one from each later round:
+    // two objections at one file:line in the same round stay two, wherever they would fold.
+    const into = state === 'blocking' && o.location
+      ? kept.find(k => k.state === 'blocking' && k.location === o.location && k.latest !== o.latest && !folded.has(`${kept.indexOf(k)}@${o.latest}`))
+      : undefined;
+    if (into) { folded.add(`${kept.indexOf(into)}@${o.latest}`); continue; }
     kept.push({ ...o, ...ruling, state });
   }
   const reviews = replay.rounds.filter(r => r.architect);
