@@ -254,6 +254,10 @@ export interface ReviewVerdict {
   minor: number;
   /** Objections the Chief Architect overruled in the last round. */
   overruled: number;
+  /** Questions the Chief Engineer left for the Chief Architect in its last round. They block. */
+  questions: number;
+  /** The Chief Engineer's last verdict was RETHINK. It blocks whatever its objection count. */
+  engineerRethink: boolean;
   /** Every seat signed off the PRD as well. */
   signedOff: boolean;
   /** One clause: "no blocking objection; 2 minor notes" or "2 objections stand, 1 to verify". */

@@ -101,5 +101,6 @@ test('the tie-break contract defines MINOR as right but not blocking, and keeps 
   const text = lib.loadContract('tiebreak', ctx.repo);
   assert.match(text, /STANDS \| MINOR \| OVERRULED \| MEASURE/);
   assert.match(text, /`MINOR`: The objection is right but should not block/);
-  assert.match(text, /never holds up a sign-off or a review/);
+  assert.match(text, /never blocks a review.s verdict/);
+  assert.match(text, /does not raise it again as an open objection/);
 });

@@ -257,7 +257,7 @@ export class DeliberationEngine {
     const reply = this.readIfExists(path.join(sessionDir, roundDirName('round', prev), 'reply.md'));
     if (reply && includeEngineerReply) sections.push(`## Chief Engineer's Reply to Draft v${prev}`, reply, '');
     const rulings = this.readIfExists(path.join(sessionDir, roundDirName('tiebreak', prev), 'reply.md'));
-    if (rulings) sections.push(`## Binding Chief Architect Rulings on Round ${prev}`, 'STANDS: the Lead must adopt the objection. MINOR: right but not blocking; adopt it if it is cheap. OVERRULED: the Chief Engineer must withdraw it. MEASURE: the stated measurement must be performed and its result recorded.', rulings, '');
+    if (rulings) sections.push(`## Binding Chief Architect Rulings on Round ${prev}`, 'STANDS: the Lead must adopt the objection. MINOR: right but not blocking; adopt it if it is cheap, and the Chief Engineer does not raise it again as an open objection. OVERRULED: the Chief Engineer must withdraw it. MEASURE: the stated measurement must be performed and its result recorded.', rulings, '');
     const review = this.readIfExists(path.join(sessionDir, roundDirName('review', prev), 'reply.md'));
     const lead = this.readIfExists(path.join(sessionDir, roundDirName('signoff', prev), 'reply.md'));
     if (review && !lead) sections.push(`## Chief Architect Review of v${prev} (not signed off — every concern, REQUIRED or ADVISORY, must be resolved)`, review, '');

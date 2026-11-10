@@ -251,3 +251,25 @@ test('stderr that mentions OAuth or authentication without a failure is not a lo
   assert.equal(lib.describeSeatError({ stderr: 'Error: OAuth access token is invalid', exitCode: 1 }).kind, 'login');
   assert.equal(lib.describeSeatError({ stderr: 'Error: authentication failed', exitCode: 1 }).kind, 'login');
 });
+
+test('the Chief Engineer\'s own RETHINK, or a question it left open, blocks even with no open objection', () => {
+  const rethink = replay([{ n: 1, engineer: { reply: 'VERDICT: RETHINK\nOPEN OBJECTIONS: 0', verdict: 'RETHINK', openObjections: 0 } }]);
+  let v = lib.reviewVerdict(rethink);
+  assert.equal(v.verdict, 'CHANGES REQUESTED');
+  assert.match(v.summary, /Chief Engineer's verdict is RETHINK/);
+  const asks = replay([{ n: 1, engineer: { reply: 'VERDICT: SHIP IT\nOPEN OBJECTIONS: 0\nQUESTION FOR ARCHITECT: Is a retry allowed here?', verdict: 'SHIP IT', openObjections: 0 } }]);
+  v = lib.reviewVerdict(asks);
+  assert.equal(v.verdict, 'CHANGES REQUESTED');
+  assert.equal(v.questions, 1);
+  assert.match(v.summary, /1 question for the Chief Architect left open/);
+  const ship = replay([{ n: 1, engineer: { reply: 'VERDICT: SHIP IT\nOPEN OBJECTIONS: 0', verdict: 'SHIP IT', openObjections: 0 } }]);
+  assert.equal(lib.reviewVerdict(ship).verdict, 'PASS');
+});
+
+test('the found list does not print an objection\'s location twice', () => {
+  const r = replay([{ n: 1, engineer: { reply: 'OPEN OBJECTIONS: 1\n\n1. **It retries forever.** (`src/a.js:9`). The loop has no cap.', openObjections: 1 }, tiebreak: ruled('STANDS') }]);
+  const md = lib.renderReplayMarkdown(r, { top: lib.topObjections(r, 5), verdict: lib.reviewVerdict(r) });
+  const found = md.split('### What the council found')[1].split('###')[0];
+  assert.equal(found.split('src/a.js:9').length - 1, 1, found);
+  assert.match(md, /The loop has no cap\./);
+});

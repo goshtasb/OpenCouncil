@@ -56,7 +56,9 @@ export function renderReplayMarkdown(r: SessionReplay, options: { top?: TopObjec
     out.push('### What the council found', '');
     options.top.forEach((o, i) => {
       out.push(`${i + 1}. **${o.headline.replace(/\*\*/g, '')}**${o.location ? ` (\`${o.location}\`)` : ''}  `);
-      if (o.evidence && o.evidence !== o.headline) out.push(`   ${o.evidence.replace(/\n+/g, ' ')}`);
+      // The location is already on the headline line, so evidence that opens with it does not repeat it.
+      const evidence = (o.evidence || '').replace(/^\s*\(([^)]*)\)\.?\s*/, (m, inner) => (o.location && inner.replace(/`/g, '').includes(o.location) ? '' : m)).trim();
+      if (evidence && evidence !== o.headline) out.push(`   ${evidence.replace(/\n+/g, ' ')}`);
       const note = rulingNote(o);
       out.push(`   _${o.seat}, round ${o.round}${note ? `; ${note}` : ''}_`, '');
     });

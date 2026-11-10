@@ -15,6 +15,7 @@ import { projectStateDir } from '../utils/paths.js';
 import { REVIEW_TASK_CLAIMS_LINE } from '../engine/claims.js';
 import { SEAT_LABELS, answeredVendors, joinNames, providerLabel, vendorOf } from '../engine/seats.js';
 import { SeatName } from '../utils/prompts.js';
+import { extractArchitectQuestions } from '../engine/questions.js';
 import { FAILOVER_ORDER } from './preflight.js';
 
 /**
@@ -384,7 +385,12 @@ export function reviewVerdict(replay: SessionReplay): ReviewVerdict {
   const unruled = count(o => o.seat === 'Chief Engineer' && !o.ruling) + orphans.unruled;
   const minor = kept.filter(o => o.state === 'minor').length + orphans.minor;
   const reviewed = replay.rounds.some(r => r.engineer);
-  const blocking = stands + measure + required + unruled;
+  // The Chief Engineer's own last word blocks too, whatever its objection count: a RETHINK says the change should not
+  // ship, and a question it left for the Chief Architect is a doubt nobody settled.
+  const lastEngineer = [...replay.rounds].reverse().find(r => r.engineer)?.engineer;
+  const engineerRethink = !signedOff && /RETHINK/i.test(lastEngineer?.verdict || '');
+  const questions = signedOff || !lastEngineer ? 0 : extractArchitectQuestions(lastEngineer.reply).length;
+  const blocking = stands + measure + required + unruled + questions + (engineerRethink ? 1 : 0);
   const notes = minor ? plural(minor, 'minor note') : '';
   let verdict: ReviewVerdict['verdict'];
   let summary: string;
@@ -397,14 +403,16 @@ export function reviewVerdict(replay: SessionReplay): ReviewVerdict {
       stands && `${plural(stands, 'objection stands', 'objections stand')}`,
       measure && `${measure} to verify`,
       required && `${plural(required, 'concern', 'concerns')} the Chief Architect marked required`,
-      unruled && `${plural(unruled, 'objection', 'objections')} nobody ruled on`
+      unruled && `${plural(unruled, 'objection', 'objections')} nobody ruled on`,
+      questions && `${plural(questions, 'question', 'questions')} for the Chief Architect left open`,
+      engineerRethink && "the Chief Engineer's verdict is RETHINK"
     ].filter(Boolean).join(', ') + (notes ? `; ${notes}` : '') + (overruled ? `; the Chief Architect overruled ${plural(overruled, 'objection')}` : '');
   } else {
     verdict = 'PASS';
     summary = [signedOff && !minor ? 'every seat signed off' : 'no blocking objection', notes, overruled && `the Chief Architect overruled ${plural(overruled, 'objection')}`]
       .filter(Boolean).join('; ');
   }
-  return { verdict, stands, measure, unruled, required, minor, overruled, signedOff, summary };
+  return { verdict, stands, measure, unruled, required, minor, overruled, questions, engineerRethink, signedOff, summary };
 }
 
 const clean = (s: string) => s.replace(/\*\*(.+?)\*\*/g, '$1').replace(/`([^`]+)`/g, '$1').replace(/\s+/g, ' ').trim();
