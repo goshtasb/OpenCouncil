@@ -13,8 +13,10 @@ import { logger } from '../utils/logger.js';
 import { CliContext, action, copyDir } from './shared.js';
 import { FULL_SEATS, PROVIDER_CLIS, PROVIDER_FIXES, ProviderId, SOLO_SEATS, SeatsPlan, describePlan, detectProviders, planSeats, renderConfig } from '../setup.js';
 import { describeAuth } from '../utils/auth.js';
+import { findConfigFile } from '../config.js';
+import { formatChecks, lineupLines, preflight, readyProviders } from '../review/preflight.js';
 
-export type DoctorFix = { kind: 'install' | 'login' | 'model' | 'unknown'; command: string | null };
+export type DoctorFix = { kind: 'install' | 'login' | 'model' | 'quota' | 'unknown'; command: string | null };
 
 /** The one command that fixes a failed seat check, from the provider and the error text. */
 export function doctorFix(provider: string, err: { message?: string; stderr?: string; stdout?: string; notInstalled?: boolean }): DoctorFix {
@@ -22,6 +24,7 @@ export function doctorFix(provider: string, err: { message?: string; stderr?: st
   if (!fixes) return { kind: 'unknown', command: null };
   if (err.notInstalled) return { kind: 'install', command: fixes.install };
   const text = `${err.message || ''}\n${err.stderr || ''}\n${err.stdout || ''}`;
+  if (/\b429\b|quota|rate.?limit|resource.?exhausted|usage limit|limit reached/i.test(text)) return { kind: 'quota', command: 'wait for the usage limit to reset (`council review` runs without this seat until then)' };
   if (/not logged in|log ?in|unauthori[sz]ed|authenticat|\b401\b|\b403\b|sign in|credential|api key|subscription|expired/i.test(text)) return { kind: 'login', command: fixes.login };
   if (/model|\b404\b|not found|unknown|invalid|unsupported|not available/i.test(text)) return { kind: 'model', command: fixes.models };
   return { kind: 'unknown', command: null };
@@ -76,9 +79,24 @@ export function registerProjectCommands(program: Command, ctx: CliContext): void
 
   program
     .command('doctor')
-    .description('Check that each configured seat CLI is installed and answers a trivial prompt; prints the command that fixes each failure')
+    .description('Check which AI CLIs are installed and signed in, and print the command that fixes each one that is not. In a project with .council/config.yml it checks the configured seats; elsewhere it checks every seat CLI and shows who a review would seat')
     .option('--no-live', 'Only check that the CLIs are installed (no model calls)')
     .action(action(async (options: { live: boolean }) => {
+      if (!findConfigFile(ctx.repoRoot)) {
+        logger.info(options.live ? 'Setup check: asking each AI CLI for a one-word reply...' : 'Setup check (installed only, no model calls):');
+        const checks = await preflight({ ping: options.live });
+        formatChecks(checks).forEach(line => console.log(line));
+        const ready = readyProviders(checks);
+        if (!ready.length) {
+          logger.error('No AI CLI is ready, so a review cannot run yet. Fix Claude Code first (above); it can hold every seat on its own.');
+          process.exitCode = 1;
+          return;
+        }
+        const plan = planSeats(new Set(ready));
+        lineupLines(plan, checks, false).forEach((line, i) => (i === 0 ? logger.success(`A review here would seat ${line}`) : logger.warn(line)));
+        logger.info('Next: npx open-council-cli review');
+        return;
+      }
       const failed: Array<{ seat: string; provider: string; fix: DoctorFix }> = [];
       let claudeInstalled = false;
       for (const [seat, seatConfig] of Object.entries(ctx.config.seats)) {

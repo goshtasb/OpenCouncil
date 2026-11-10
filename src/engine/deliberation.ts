@@ -10,7 +10,7 @@ import { ArchitectQuestionEngine, extractArchitectQuestions, formatArchitectRuli
 import { TieBreakEngine } from './tiebreak.js';
 import { ArchitectureReviewEngine } from './review.js';
 import { LeadSignoffEngine, checkAllSignoffs } from './signoff.js';
-import { getAdapter } from '../adapters/registry.js';
+import { SeatUnavailableError, runSeat } from './seats.js';
 import { buildSystemPrompt } from '../utils/prompts.js';
 import { logger } from '../utils/logger.js';
 
@@ -85,13 +85,15 @@ export class DeliberationEngine {
           const reviewFile = path.join(sessionDir, roundDirName('review', roundsDone), 'review.json');
           const review = fs.existsSync(reviewFile)
             ? JSON.parse(fs.readFileSync(reviewFile, 'utf8'))
-            : await this.review.runReview(sessionId);
+            : await this.unlessSeatGone(() => this.review.runReview(sessionId));
+          if (!review) return this.stall(sessionId, task, meta, roundsDone, 'The Chief Engineer had no objections left, but no provider could hold the Chief Architect seat for the sign-off review, so nothing was signed off.');
           logger.council('CHIEF ARCHITECT', `Verdict on v${roundsDone}: ${review.verdict} (required ${review.requiredConcerns}, advisory ${review.advisoryConcerns})`);
           if (isSignedOff(review)) {
             const signoffFile = path.join(sessionDir, roundDirName('signoff', roundsDone), 'signoff.json');
             const lead = fs.existsSync(signoffFile)
               ? JSON.parse(fs.readFileSync(signoffFile, 'utf8'))
-              : await this.signoff.runSignoff(sessionId);
+              : await this.unlessSeatGone(() => this.signoff.runSignoff(sessionId));
+            if (!lead) return this.stall(sessionId, task, meta, roundsDone, 'The Chief Architect signed off, but no provider could hold the Lead PM seat for the final sign-off, so nothing was signed off.');
             logger.council('LEAD PM', `Sign-off on v${roundsDone}: ${lead.verdict}`);
             await this.routeQuestions(sessionId, 'lead_pm', `sign-off on v${roundsDone}`, path.join(sessionDir, roundDirName('signoff', roundsDone), 'reply.md'));
           }
@@ -109,12 +111,12 @@ export class DeliberationEngine {
           }
         } else if (roundsDone < roundLimit && !fs.existsSync(path.join(sessionDir, roundDirName('tiebreak', roundsDone), 'rulings.json'))) {
           if (roundsDone >= meta.tiebreakRound) {
-            await this.tiebreak.runTieBreak(sessionId);
+            await this.unlessSeatGone(() => this.tiebreak.runTieBreak(sessionId));
           } else {
             const stuck = this.noProgress(sessionDir, roundsDone);
             if (stuck) {
               logger.council('HARNESS', `Open objections have not dropped for ${stuck.length} rounds (${stuck.join(' → ')}); the Chief Architect arbitrates now instead of waiting for round ${meta.tiebreakRound}.`);
-              await this.tiebreak.runTieBreak(sessionId, { early: true });
+              await this.unlessSeatGone(() => this.tiebreak.runTieBreak(sessionId, { early: true }));
             }
           }
         }
@@ -122,13 +124,15 @@ export class DeliberationEngine {
 
       const nextRound = roundsDone + 1;
       if (nextRound > roundLimit) {
-        const reason = `No unanimous zero-concern sign-off after ${roundsDone} rounds (max_rounds ${meta.maxRounds}, sign-off revisions ${signoffBudget}); nothing was presented to the Operator.`;
-        const report = this.writeStallReport(sessionId, task, reason);
-        this.sessionManager.setStatus(sessionId, 'STALLED', { reason, partialReport: report || undefined });
-        syncBacklogItem(this.pipeline, meta.backlogItem, 'parked', sessionId);
-        logger.council('HARNESS', `Council stalled: ${reason}`);
-        if (report) logger.council('HARNESS', `Partial result (last draft + open objections, not approved): ${report}`);
-        return { outcome: 'STALLED', rounds: roundsDone, reason, report };
+        // Quick reviews end on the Architect's ruling: every open objection is upheld or overruled before the run stops.
+        if (this.config.council.final_arbitration && roundsDone > 0 && !this.readVerdict(sessionDir, roundsDone).converged
+          && !fs.existsSync(path.join(sessionDir, roundDirName('tiebreak', roundsDone), 'rulings.json'))) {
+          await this.unlessSeatGone(() => this.tiebreak.runTieBreak(sessionId, { early: true }));
+        }
+        const reason = this.config.council.final_arbitration && roundsDone > 0 && !this.readVerdict(sessionDir, roundsDone).converged
+          ? `Quick review done: objections were still open after ${roundsDone} round${roundsDone === 1 ? '' : 's'}${fs.existsSync(path.join(sessionDir, roundDirName('tiebreak', roundsDone), 'rulings.json')) ? ' and the Chief Architect ruled on each' : ''}; nothing was signed off.`
+          : `No unanimous zero-concern sign-off after ${roundsDone} rounds (max_rounds ${meta.maxRounds}, sign-off revisions ${signoffBudget}); nothing was presented to the Operator.`;
+        return this.stall(sessionId, task, meta, roundsDone, reason);
       }
 
       if (!fs.existsSync(path.join(sessionDir, `plan-v${nextRound}.md`))) {
@@ -138,6 +142,30 @@ export class DeliberationEngine {
       const verdict = await this.council.askRound(sessionId, this.buildEngineerPrompt(sessionId, task, nextRound));
       logger.council('CHIEF ENGINEER', `Round ${nextRound}: ${verdict.verdict}, open objections ${verdict.openObjections === 999 ? 'unparseable' : verdict.openObjections}`);
       await this.routeQuestions(sessionId, 'chief_engineer', `round ${nextRound}`, path.join(sessionDir, roundDirName('round', nextRound), 'reply.md'));
+    }
+  }
+
+  private stall(sessionId: string, task: string, meta: CouncilSessionMeta, roundsDone: number, reason: string): DeliberationOutcome {
+    const report = this.writeStallReport(sessionId, task, reason);
+    this.sessionManager.setStatus(sessionId, 'STALLED', { reason, partialReport: report || undefined });
+    syncBacklogItem(this.pipeline, meta.backlogItem, 'parked', sessionId);
+    logger.council('HARNESS', `Council stalled: ${reason}`);
+    if (report) logger.council('HARNESS', `Partial result (last draft + open objections, not approved): ${report}`);
+    return { outcome: 'STALLED', rounds: roundsDone, reason, report };
+  }
+
+  /**
+   * Runs a step that only adds to what the council already has (an arbitration, a sign-off). When its seat failed and no
+   * provider is left to take it, the step is skipped (null) and the run goes on with what the other seats produced;
+   * seats.json and the history already record the gap. Any other error still ends the run.
+   */
+  private async unlessSeatGone<T>(step: () => Promise<T>): Promise<T | null> {
+    try {
+      return await step();
+    } catch (err) {
+      if (!(err instanceof SeatUnavailableError)) throw err;
+      logger.warn(`${err.message} Going on without that step.`);
+      return null;
     }
   }
 
@@ -239,8 +267,6 @@ export class DeliberationEngine {
 
     const prompt = buildLeadDraftPrompt({ sessionId, version, task, previousPlan, feedback, rulings: this.rulings(sessionId), worktreePath: meta.worktreePath, baseSha: meta.baseSha, profile: sessionProfile(meta, this.config) });
 
-    const pmConfig = this.config.seats.lead_pm;
-    const adapter = getAdapter(pmConfig.provider);
     const systemPrompt = buildSystemPrompt(this.config, 'lead_pm', null, meta.repoPath);
 
     let lastError = '';
@@ -250,9 +276,8 @@ export class DeliberationEngine {
       this.sessionManager.setActivity('lead_pm', 'busy', `${previousPlan ? 'Revising' : 'Drafting'} v${version}`);
       let reply: string;
       try {
-        reply = await adapter.runPrompt(attemptPrompt, {
+        reply = await runSeat(this.config, this.sessionManager, sessionId, 'lead_pm', `draft v${version}`, attemptPrompt, {
           cwd: meta.worktreePath,
-          model: pmConfig.model,
           permissionMode: 'plan',
           systemPrompt,
           timeoutSeconds: this.config.council.round_timeout_seconds
@@ -297,6 +322,6 @@ export class DeliberationEngine {
     const plan = this.readIfExists(path.join(this.sessionManager.getSessionPath(sessionId), `plan-v${this.sessionManager.getRoundsDone(sessionId) + 1}.md`))
       || this.readIfExists(path.join(this.sessionManager.getSessionPath(sessionId), `plan-v${this.sessionManager.getRoundsDone(sessionId)}.md`))
       || '(no draft yet)';
-    await this.questions.ask(sessionId, seat, stage, questions, `### Current draft\n${plan}`);
+    await this.unlessSeatGone(() => this.questions.ask(sessionId, seat, stage, questions, `### Current draft\n${plan}`));
   }
 }

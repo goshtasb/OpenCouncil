@@ -13,10 +13,18 @@ import { CouncilEngine } from '../engine/council.js';
 import { DeliberationEngine } from '../engine/deliberation.js';
 import { projectStateDir } from '../utils/paths.js';
 import { REVIEW_TASK_CLAIMS_LINE } from '../engine/claims.js';
+import { SEAT_LABELS, answeredVendors, joinNames, providerLabel, vendorOf } from '../engine/seats.js';
+import { SeatName } from '../utils/prompts.js';
+import { FAILOVER_ORDER } from './preflight.js';
 
-/** Round budget for `council review`. The first round carries the code objections; later rounds argue over the Lead PM's fix plan, so two keeps a review near four minutes. */
-export const REVIEW_ROUNDS = 2;
-export const REVIEW_MIN_ROUNDS = 2;
+/**
+ * Round budget for `council review`. The default is the quick review: one round, in which the Lead PM states what the
+ * change claims, the Chief Engineer objects with file:line, and the Chief Architect rules on each objection. That is one
+ * call per seat. `--debate` (or `--rounds 2` to 4) lets the Lead answer the objections and the seats argue on.
+ */
+export const REVIEW_ROUNDS = 1;
+export const REVIEW_DEBATE_ROUNDS = 2;
+export const REVIEW_MIN_ROUNDS = 1;
 export const REVIEW_MAX_ROUNDS = 4;
 /** Above this the diff is too big to argue about usefully in one sitting. */
 export const MAX_REVIEW_DIFF_BYTES = 120_000;
@@ -54,18 +62,35 @@ export function detectGates(repo: string): DetectedGates {
 /**
  * The config a review runs with. A project's own .council/config.yml is used when it exists; otherwise the
  * seats come from the provider CLIs on PATH and the gates from the project files, and nothing is written.
+ * `found` is the set of providers that can hold a seat: the ones the setup check found ready, or, without a check,
+ * every one installed. A configured seat whose provider is not in it moves to one that is, and says so in `notes`.
+ * A seat that fails mid-review moves to the next provider in `found` (council.seat_failover).
  * Either way the round budget is cut to `rounds` so a review finishes in minutes.
  */
-export async function reviewConfig(repo: string, rounds = REVIEW_ROUNDS, found?: Set<string>): Promise<{ config: CouncilConfig; plan: SeatsPlan | null; gates: DetectedGates | null }> {
+export async function reviewConfig(repo: string, rounds = REVIEW_ROUNDS, found?: Set<string>): Promise<{ config: CouncilConfig; plan: SeatsPlan | null; gates: DetectedGates | null; notes: string[] }> {
   let config: CouncilConfig;
   let plan: SeatsPlan | null = null;
   let gates: DetectedGates | null = null;
+  const notes: string[] = [];
+  const available: Set<string> = found || await detectProviders();
   if (findConfigFile(repo)) {
-    config = loadConfig(repo);
+    config = JSON.parse(JSON.stringify(loadConfig(repo))) as CouncilConfig;
+    if (found) {
+      const fallback = planSeats(available);
+      if (fallback.mode === 'none') throw new Error(noSeatMessage());
+      for (const seat of Object.keys(config.seats) as (keyof CouncilConfig['seats'])[]) {
+        const configured = config.seats[seat];
+        if (available.has(configured.provider)) continue;
+        const next = fallback.seats[seat];
+        notes.push(`${SEAT_LABELS[seat]}: ${providerLabel(configured.provider)} is not ready, so ${providerLabel(next.provider)} (${next.model}) takes the seat for this review. .council/config.yml is unchanged.`);
+        config.seats[seat] = { ...configured, provider: next.provider, model: next.model };
+      }
+    }
   } else {
-    plan = planSeats(found || await detectProviders());
-    if (plan.mode === 'none') {
-      throw new Error(`No AI CLI was found on PATH. A review needs at least Claude Code: ${PROVIDER_FIXES['claude-code'].install}, then run \`claude\` once to sign in.`);
+    plan = planSeats(available);
+    if (plan.mode === 'none') throw new Error(noSeatMessage());
+    for (const seat of Object.keys(plan.seats) as (keyof CouncilConfig['seats'])[]) {
+      if (!available.has(plan.seats[seat].provider)) notes.push(`No ready AI can hold the ${SEAT_LABELS[seat]} seat${seat === 'chief_architect' ? ' with its tools off' : ''}, so this review runs without it. Claude Code or Grok can hold it.`);
     }
     gates = detectGates(repo);
     const base = JSON.parse(JSON.stringify(DEFAULT_CONFIG)) as CouncilConfig;
@@ -79,15 +104,25 @@ export async function reviewConfig(repo: string, rounds = REVIEW_ROUNDS, found?:
     throw new Error(`--rounds takes a whole number from ${REVIEW_MIN_ROUNDS} to ${REVIEW_MAX_ROUNDS} (the quick profile's limit).`);
   }
   const max = rounds;
+  const quick = max === 1;
   config.council = {
     ...config.council,
     profile: 'quick',
     max_rounds: max,
     tiebreak_round: Math.max(1, max - 1),
-    signoff_revisions: 1,
+    // One round means one call per seat: no revision rounds after a sign-off review, and the Architect rules on
+    // whatever objections are still open instead of the run ending on them unjudged.
+    signoff_revisions: quick ? 0 : 1,
+    final_arbitration: quick,
+    seat_failover: true,
+    failover_providers: FAILOVER_ORDER.filter(p => available.has(p)),
     round_timeout_seconds: Math.min(config.council.round_timeout_seconds || 600, 600)
   };
-  return { config, plan, gates };
+  return { config, plan, gates, notes };
+}
+
+function noSeatMessage(): string {
+  return `No AI CLI is ready to hold a seat. A review needs at least Claude Code: ${PROVIDER_FIXES['claude-code'].install}, then \`${PROVIDER_FIXES['claude-code'].login}\`. \`council doctor\` checks every seat and prints the fix for each.`;
 }
 
 export interface ReviewChange { kind: 'uncommitted' | 'branch'; diff: string; base: string; files: string[]; withheld: string[] }
@@ -168,15 +203,15 @@ export function reviewSlug(repo: string, task?: string): string {
 
 
 /** Numbered objections with a bold headline; failing that, plain numbered items whose first sentence is the headline. */
-function engineerObjections(reply: string): { headline: string; evidence: string }[] {
+function engineerObjections(reply: string): { n: number; headline: string; evidence: string }[] {
   const bold = objectionHeadlines(reply);
   if (bold.length) return bold;
-  const out: { headline: string; evidence: string }[] = [];
+  const out: { n: number; headline: string; evidence: string }[] = [];
   for (const line of reply.split('\n')) {
-    const m = /^\d+\.\s+(.+)$/.exec(line.trim());
+    const m = /^(\d+)\.\s+(.+)$/.exec(line.trim());
     if (!m) continue;
-    const headline = m[1].split(/(?<=[.!?])\s/)[0];
-    out.push({ headline, evidence: m[1] });
+    const headline = m[2].split(/(?<=[.!?])\s/)[0];
+    out.push({ n: parseInt(m[1], 10), headline, evidence: m[2] });
   }
   return out;
 }
@@ -189,13 +224,16 @@ export const findLocation = (text: string) => LOCATION.exec(text)?.[0];
 /**
  * The objections worth leading with: the Chief Engineer's, earliest round first (later rounds argue over the fix plan),
  * those that cite a file:line ahead of those that don't, then the Chief Architect's required concerns. Duplicates across rounds are dropped.
+ * Where the Chief Architect ruled on a round, an objection it OVERRULED is left out and one it upheld (STANDS) leads.
  */
 export function topObjections(replay: SessionReplay, limit = 3): TopObjection[] {
   const all: TopObjection[] = [];
   for (const round of replay.rounds) {
     if (round.engineer && (round.engineer.openObjections ?? 1) > 0) {
       for (const o of engineerObjections(round.engineer.reply)) {
-        all.push({ round: round.n, seat: 'Chief Engineer', headline: o.headline, evidence: o.evidence, location: findLocation(`${o.headline} ${o.evidence}`) });
+        const ruling = round.tiebreak?.rulings.find(r => r.id === o.n)?.ruling;
+        if (ruling === 'OVERRULED') continue;
+        all.push({ round: round.n, seat: 'Chief Engineer', headline: o.headline, evidence: o.evidence, location: findLocation(`${o.headline} ${o.evidence}`), ...(ruling === 'STANDS' || ruling === 'MEASURE' ? { ruling } : {}) });
       }
     }
     if (round.architect) {
@@ -213,22 +251,57 @@ export function topObjections(replay: SessionReplay, limit = 3): TopObjection[] 
   });
   // Headlines that lean on the session's own labels ("ruling R2", "FR7") mean little to anyone outside it.
   const jargon = (o: TopObjection) => (/\b(N?FR|R)\d+\b|\bruling\b/i.test(o.headline) ? 5 : 0);
-  const rank = (o: TopObjection) => (o.seat === 'Chief Engineer' ? 0 : 100) + (o.location ? 0 : 10) + jargon(o) + o.round * 8;
+  const upheld = (o: TopObjection) => (o.ruling === 'STANDS' ? 0 : o.ruling === 'MEASURE' ? 1 : 2);
+  const rank = (o: TopObjection) => (o.seat === 'Chief Engineer' ? 0 : 100) + (o.location ? 0 : 10) + jargon(o) + o.round * 8 + upheld(o);
   return unique.map((o, i) => ({ o, i })).sort((a, b) => rank(a.o) - rank(b.o) || a.i - b.i).slice(0, limit).map(x => x.o);
 }
 
 const clean = (s: string) => s.replace(/\*\*(.+?)\*\*/g, '$1').replace(/`([^`]+)`/g, '$1').replace(/\s+/g, ' ').trim();
 
+/**
+ * Who reviewed, as a share line can say it without overclaiming: the vendors that actually answered ("Claude, Gemini
+ * and Grok"), or for a single-vendor review the vendor and its models ("three Claude seats (sonnet and opus)").
+ * Sessions from before seats.json existed say "three AI seats", which names no vendor.
+ */
+export function councilPhrase(replay: SessionReplay): string {
+  const answered = replay.seats?.answered || [];
+  if (!answered.length) return 'three AI seats';
+  const vendors = answeredVendors(replay.seats!);
+  if (vendors.length > 1) return joinNames(vendors);
+  const models = Array.from(new Set(answered.map(a => a.model).filter(Boolean)));
+  const seats = new Set(answered.map(a => a.seat)).size;
+  return `${seats === 3 ? 'three' : seats === 2 ? 'two' : 'one'} ${vendors[0]} seat${seats === 1 ? '' : 's'}${models.length ? ` (${joinNames(models)})` : ''}`;
+}
+
 /** One line someone can paste anywhere: what the council found, in its own words, and how to run one. */
 export function shareLine(replay: SessionReplay, top: TopObjection[]): string {
+  const who = councilPhrase(replay);
   const count = top.length;
   if (!count) {
-    return `Three AI seats reviewed my ${/^Review this change before it ships\./.test(replay.task) ? 'change' : 'plan'} and found nothing to object to. Try it on yours: npx open-council-cli review`;
+    return `${who[0].toUpperCase()}${who.slice(1)} reviewed my ${/^Review this change before it ships\./.test(replay.task) ? 'change' : 'plan'} and found nothing to object to. Try it on yours: npx open-council-cli review`;
   }
   const first = clean(top[0].headline).replace(/[.:;]+$/, '');
   const where = top[0].location ? ` (${top[0].location})` : '';
   const what = /^Review this change before it ships\./.test(replay.task) ? 'my change before shipping it' : 'my plan before building it';
-  return `I had three AI seats argue over ${what}. First objection, from the ${top[0].seat}: "${first}"${where}. Try it on yours: npx open-council-cli review`;
+  const verb = replay.rounds.filter(r => r.engineer).length > 1 ? 'argue over' : 'review';
+  return `I had ${who} ${verb} ${what}. First objection, from the ${top[0].seat}${top[0].ruling === 'STANDS' ? ', upheld by the Chief Architect' : ''}: "${first}"${where}. Try it on yours: npx open-council-cli review`;
+}
+
+/** The seats line and any gaps, for the top of a review page: who answered, and which seat failed and who took it. */
+export function seatSummary(replay: SessionReplay): { lineup: string | null; gaps: string[] } {
+  const record = replay.seats;
+  if (!record) return { lineup: null, gaps: [] };
+  const order: SeatName[] = ['lead_pm', 'chief_engineer', 'chief_architect'];
+  const vendors = answeredVendors(record);
+  const single = vendors.length === 1;
+  const parts = order.map(seat => {
+    const who = record.answered.filter(a => a.seat === seat);
+    if (!who.length) return `${SEAT_LABELS[seat]}: did not answer`;
+    return `${SEAT_LABELS[seat]} ${who.map(a => single ? a.model : `${vendorOf(a.provider)} (${a.model})`).join(', then ')}`;
+  });
+  const label = !vendors.length ? 'No seat answered' : single ? `${vendors[0]} only (single vendor)` : joinNames(vendors);
+  const gaps = record.failures.map(f => `${SEAT_LABELS[f.seat]} on ${providerLabel(f.provider)} (${f.model}) ${f.reason} during ${f.stage}; ${f.replacedBy ? `${providerLabel(f.replacedBy.provider)} (${f.replacedBy.model}) took the seat` : 'nobody could take the seat, so that step was skipped'}.`);
+  return { lineup: `${label}: ${parts.join(', ')}.`, gaps };
 }
 
 export interface ReviewOptions {
@@ -252,6 +325,8 @@ export interface ReviewResult {
   share: string;
   htmlPath: string;
   mdPath: string;
+  /** Who held each seat, and the seats that failed mid-run. */
+  seats: { lineup: string | null; gaps: string[] };
 }
 
 function removeWorktree(repo: string, worktreePath: string): void {
@@ -295,9 +370,10 @@ export async function runReview(repo: string, options: ReviewOptions = {}): Prom
   const replay = loadSessionReplay(dir);
   const top = topObjections(replay, 5);
   const share = shareLine(replay, top);
+  const seats = seatSummary(replay);
   const htmlPath = path.join(dir, 'review.html');
   const mdPath = path.join(dir, 'review.md');
-  fs.writeFileSync(htmlPath, renderReplayHtml(replay, { top, share }), 'utf8');
-  fs.writeFileSync(mdPath, renderReplayMarkdown(replay, { top, share }), 'utf8');
-  return { sessionId, outcome: result.outcome, rounds: result.rounds, seconds: Math.round((Date.now() - started) / 1000), replay, top, share, htmlPath, mdPath };
+  fs.writeFileSync(htmlPath, renderReplayHtml(replay, { top, share, seats }), 'utf8');
+  fs.writeFileSync(mdPath, renderReplayMarkdown(replay, { top, share, seats }), 'utf8');
+  return { sessionId, outcome: result.outcome, rounds: result.rounds, seconds: Math.round((Date.now() - started) / 1000), replay, top, share, htmlPath, mdPath, seats };
 }

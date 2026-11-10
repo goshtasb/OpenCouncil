@@ -44,23 +44,36 @@ cd your-repo
 npx open-council-cli review                                          # your uncommitted change
 npx open-council-cli review --base origin/main                       # or this branch since main
 npx open-council-cli review "add rate limiting to the login route"   # or a plan, before you write any code
+npx open-council-cli doctor                                          # just check which AIs are ready, and how to fix the rest
 ```
 
-**You need:** Node 18 or newer, [Claude Code](https://claude.com/claude-code), and macOS, Linux or WSL. At the default two rounds a review takes about four minutes. It runs on your own account, one of two ways:
+**You need:** Node 18 or newer, [Claude Code](https://claude.com/claude-code), and macOS, Linux or WSL. A review is one quick round by default: one call per seat. `--debate` runs the longer back-and-forth instead. It runs on your own account, one of two ways:
 
 | | For | Set up | What it costs |
 | :--- | :--- | :--- | :--- |
 | **Your Claude plan** | You, on your own machine or your own repo | Run `claude` once and sign in (Pro, Max, Team or Enterprise) | Your plan's usage, like any other Claude Code session |
-| **Your own API key** | Teams and companies | `export ANTHROPIC_API_KEY=...` (Bedrock and Vertex work too, through Claude Code's own settings) | Billed to your key: roughly $1 to $2.50 for a two-round review of a normal pull request. That is an estimate from one measured run, a four-round review of a large diff that cost about $3.65 |
+| **Your own API key** | Teams and companies | `export ANTHROPIC_API_KEY=...` (Bedrock and Vertex work too, through Claude Code's own settings) | Billed to your key: less than a two-round debate, which is roughly $1 to $2.50 for a normal pull request. That is an estimate from one measured run, a four-round review of a large diff that cost about $3.65 |
 
-Before the seats start, the review prints which login each one will use. If `ANTHROPIC_API_KEY` is set, Claude Code bills that key, not your plan, and the review says so. Open Council never reads, stores or sends a credential; each AI CLI signs in by itself.
+Before anything runs, the review checks every AI CLI it knows (Claude Code, Gemini through Antigravity's `agy`, Grok) with a one-word prompt in an empty folder, no tools and no repository files. Each line says ready, not installed, not signed in, or out of quota, with the exact command that fixes it:
+
+```
+  ✓ Claude        ready: answered on your Claude login  (2.1 s)
+  ✗ Gemini (agy)  not installed: `agy` is not on PATH
+      fix: curl -fsSL https://antigravity.google/cli/install.sh | bash  then  agy   (sign in through the browser prompt)
+  ✓ Grok          ready: answered on your Grok login  (3.4 s)
+Seats: Claude and Grok: Lead PM Claude (sonnet), Chief Engineer Claude (opus), Chief Architect Grok (grok-4.6).
+```
+
+The review then runs with whatever is ready. With Claude alone, the seats run on Claude's sonnet and opus models, and the review says plainly that it is a single-vendor review. It never claims vendors that did not answer: the line-up in `review.md` and `review.html` lists who actually held each seat. `--no-check` skips the check. The review also prints which login each seat uses. If `ANTHROPIC_API_KEY` is set, Claude Code bills that key, not your plan, and the review says so. Open Council never reads, stores or sends a credential; each AI CLI signs in by itself.
 
 **What happens:**
 
 1. It works out what to review. With no arguments, that is your uncommitted change, untracked files included. With nothing uncommitted, it is your branch's commits since `origin/main` (or `main`/`master`). Pass `--base <ref>` to pick the base yourself, or a sentence to review a plan instead of a diff.
 2. It prints every file whose diff the seats will see, before they start. Untracked files that look like secrets (`.env*`, `*.pem`, `*.key`, `id_rsa` and the like) are never sent, and it names the ones it held back.
-3. Three seats argue over it. The **Lead PM** writes down what the change claims to do. The **Chief Engineer** checks every claim against your code and objects with `file:line`. The **Chief Architect** rules on whether it should ship. The seats read your project from a temporary checkout that is removed when the review ends.
+3. Three seats review it. The **Lead PM** writes down what the change claims to do. The **Chief Engineer** checks every claim against your code and objects with `file:line`. The **Chief Architect** rules on each objection, upheld or overruled. With `--debate`, the Lead revises and the seats go back and forth until the Architect signs off or the round budget runs out. The seats read your project from a temporary checkout that is removed when the review ends.
 4. It prints the strongest objections and a line you can paste anywhere, and writes two files: `review.html`, one self-contained page, and `review.md`, ready for a gist or a pull request comment. The page opens in your browser when you run it in a terminal.
+
+If a seat fails halfway (a usage limit, a lost login, a turn limit, an error), that AI is dropped for the rest of the review and the next ready one takes the seat. If none is left for the Chief Architect, the review still finishes without its rulings. Either way the review keeps going and lists the gap under **Gaps in this review**, instead of failing the whole run.
 
 The seats are whichever AI CLIs you have. Claude Code alone is enough: every seat then runs on it, with a different model, persona and tool access per seat. The test and lint commands are read from your `package.json`, `Cargo.toml`, `go.mod`, `pyproject.toml`, `setup.py` or `requirements.txt` so the seats know how the project is checked; a review never runs them.
 
@@ -68,7 +81,9 @@ The seats are whichever AI CLIs you have. Claude Code alone is enough: every sea
 | :--- | :--- |
 | `"<plan>"` | Review a one-line plan instead of a diff |
 | `--base <ref>` | Review the commits ahead of `<ref>` instead of uncommitted changes |
-| `--rounds <n>` | Round budget, 2 to 4 (default 2). Round 1 carries most of the code objections |
+| `--debate` | Run the full debate: two rounds, with revisions and a sign-off, instead of the one quick round |
+| `--rounds <n>` | Round budget, 1 to 4 (default 1, or 2 with `--debate`). Round 1 carries most of the code objections |
+| `--no-check` | Skip the setup check and treat every installed AI CLI as ready |
 | `--gist` | Also put `review.md` in a secret GitHub gist with your `gh` CLI and print the link |
 | `-o, --out <dir>` | Also copy `review.html` and `review.md` into `<dir>` |
 | `--no-open` | Don't open the page in a browser |
@@ -287,7 +302,8 @@ A council that went wrong is just as useful here. Post yours in [Discussions →
 
 ## 🚧 Honest limits
 
-- `council review` has one measured run so far: 6 minutes at 3 rounds, with the useful objections all in round 1 (2 min 44 s). The default is now 2 rounds.
+- `council review` has one measured run at 3 rounds: 6 minutes, with the useful objections all in round 1 (2 min 44 s). That is why the default is now one quick round. The quick round's own time is not yet measured; the Lead PM reading the repository is likely the slowest part.
+- A review with only Claude installed is a single-vendor review: the seats differ by model, persona and tool access, not by company. The review labels it that way.
 - A full council takes roughly **10–40 minutes** and spends real subscription quota. The quick profile is bounded at 4 rounds; its typical time is not yet measured on enough runs to quote.
 - Live runs so far are single digits. Before v0.2.0, **one in five stalled** without producing anything. v0.2.0 writes the last draft and the open objections on a stall, arbitrates early when objections stop dropping, and retries a seat that returns nothing once. Whether that moves the stall rate is not yet known; the numbers will be updated here as runs accumulate.
 - Solo mode (every seat on Claude Code) is new in v0.2.0: the seats are told apart by persona, model and tool access, not by vendor. Two live runs so far, on one small task: one stalled on review churn (which changed the review rule), one signed off in a round and shipped a PR. That is not a rate.
@@ -376,8 +392,10 @@ seats:
 | `council review runs inside a git repository` | `cd` into the repository, or `git init` and commit first. |
 | `Nothing to review` | There is no uncommitted change and no commit ahead of the base. Pass `--base <ref>`, or a plan in quotes. |
 | `The change is … KB … more than one review can argue about well` | Commit part of it and review the rest, or pass a closer `--base`. |
-| `--rounds takes a whole number from 2 to 4` | The quick profile caps a review at 4 rounds. |
-| A seat fails in `council doctor` | Run the command `doctor` prints under it; it is the install or sign-in step for that CLI. `council doctor --no-live` checks installs without calling any model. |
+| `--rounds takes a whole number from 1 to 4` | A review is capped at 4 rounds. |
+| `No AI CLI is ready to hold a seat` | Every check failed. Run the `fix:` command printed under Claude, or `npx open-council-cli doctor` to check again. |
+| A line under **Gaps in this review** | That seat's AI failed partway and another took over, or nobody could. The line says why; the fix is usually the sign-in or a wait for the usage limit. |
+| A seat fails in `council doctor` | Run the command `doctor` prints under it; it is the install or sign-in step for that CLI. `council doctor --no-live` checks installs without calling any model. Outside a set-up repository, `doctor` checks every AI CLI and says which seats a review would use. |
 | The session ends `STALLED` | No document reached you, so nothing was built. Read `stalled-draft-and-objections.md` in the session folder (`council status $SESSION` shows where), sharpen the task, and open a new session. |
 | The session ends `BLOCKED` | A gate failed, the merge with your base branch conflicted, or the push or PR could not be made. The reason is in `council status $SESSION`. Fix it and run `council run $SESSION --skip-agent`. |
 | The PR step fails | Check `gh auth status`, and that `origin` is a GitHub remote you can push to. |

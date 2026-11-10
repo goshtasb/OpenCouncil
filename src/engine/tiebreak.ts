@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { CouncilConfig, TieBreakResult, TieBreakRuling } from '../types.js';
 import { SessionManager, roundDirName } from './session.js';
-import { getAdapter } from '../adapters/registry.js';
+import { runSeat } from './seats.js';
 import { buildSystemPrompt, FIELD_SEPARATOR, protocolLines } from '../utils/prompts.js';
 import { TIEBREAK_CLAIMS_INSTRUCTION } from './claims.js';
 import { logger } from '../utils/logger.js';
@@ -71,16 +71,13 @@ export class TieBreakEngine {
 
     fs.writeFileSync(path.join(tbDir, 'prompt.md'), prompt, 'utf8');
 
-    const architectConfig = this.config.seats.chief_architect;
-    const adapter = getAdapter(architectConfig.provider);
 
-    logger.council('CHIEF ARCHITECT', `Arbitrating deadlock after round ${roundsDone}...`);
+    logger.council('CHIEF ARCHITECT', this.config.council.final_arbitration && roundsDone >= meta.maxRounds ? `Ruling on the open objections of round ${roundsDone}...` : `Arbitrating deadlock after round ${roundsDone}...`);
     this.sessionManager.setActivity('chief_architect', 'busy', `Arbitrating round ${roundsDone}`);
     let reply: string;
     try {
-      reply = await adapter.runPrompt(prompt, {
+      reply = await runSeat(this.config, this.sessionManager, sessionId, 'chief_architect', `arbitration of round ${roundsDone}`, prompt, {
         cwd: sessionDir,
-        model: architectConfig.model,
         systemPrompt: buildSystemPrompt(this.config, 'chief_architect', 'tiebreak', meta.repoPath),
         timeoutSeconds: this.config.council.round_timeout_seconds
       });
