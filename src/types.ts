@@ -1,6 +1,6 @@
 export type VerdictType = 'SHIP IT' | 'SHIP WITH CHANGES' | 'RETHINK' | 'UNPARSEABLE';
 export type ArchitectVerdictType = 'SIGN-OFF' | 'SIGN-OFF WITH CONCERNS' | 'RETHINK' | 'UNPARSEABLE';
-export type TieBreakRuling = 'STANDS' | 'OVERRULED' | 'MEASURE';
+export type TieBreakRuling = 'STANDS' | 'MINOR' | 'OVERRULED' | 'MEASURE';
 
 export interface Objection {
   id: number;

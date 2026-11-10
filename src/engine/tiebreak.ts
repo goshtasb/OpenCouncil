@@ -65,7 +65,8 @@ export class TieBreakEngine {
       '',
       ...formatArchitectRulings(this.sessionManager.loadArchitectRulings(sessionId)),
       '## Instructions',
-      'Rule on every numbered objection per the Arbiter contract. Plain text only: one line per objection, `RULING <n>: STANDS | OVERRULED | MEASURE — <reason>`, then `SUMMARY: <sentence>`.',
+      'Rule on every numbered objection per the Arbiter contract. Plain text only: one line per objection, `RULING <n>: STANDS | MINOR | OVERRULED | MEASURE — <reason>`, then `SUMMARY: <sentence>`.',
+      'MINOR means the objection is right but should not block shipping: naming, style, wording, a nice-to-have test. Use STANDS only for a defect that should block: wrong behaviour, a broken caller, a security or data-loss risk, a missing test for a changed behaviour.',
       TIEBREAK_CLAIMS_INSTRUCTION
     ].join('\n');
 
@@ -102,7 +103,7 @@ export function parseTieBreak(reply: string, round: number, expectedObjections: 
   const lines = protocolLines(reply);
   const rulings: TieBreakResult['rulings'] = [];
   let summary = 'Tie-break concluded.';
-  const re = new RegExp(`^RULING\\s+(\\d+)\\s*:\\s*(STANDS|OVERRULED|MEASURE)\\b(?:${FIELD_SEPARATOR}|\\s*:\\s*|\\s+)?(.*)$`, 'i');
+  const re = new RegExp(`^RULING\\s+(\\d+)\\s*:\\s*(STANDS|MINOR|OVERRULED|MEASURE)\\b(?:${FIELD_SEPARATOR}|\\s*:\\s*|\\s+)?(.*)$`, 'i');
 
   for (const line of lines) {
     const match = line.match(re);

@@ -124,14 +124,18 @@ export class DeliberationEngine {
 
       const nextRound = roundsDone + 1;
       if (nextRound > roundLimit) {
-        // Quick reviews end on the Architect's ruling: every open objection is upheld or overruled before the run stops.
+        // Reviews end on the Architect's ruling: every open objection is ruled on before the run stops.
         if (this.config.council.final_arbitration && roundsDone > 0 && !this.readVerdict(sessionDir, roundsDone).converged
           && !fs.existsSync(path.join(sessionDir, roundDirName('tiebreak', roundsDone), 'rulings.json'))) {
           await this.unlessSeatGone(() => this.tiebreak.runTieBreak(sessionId, { early: true }));
         }
-        const reason = this.config.council.final_arbitration && roundsDone > 0 && !this.readVerdict(sessionDir, roundsDone).converged
-          ? `Quick review done: objections were still open after ${roundsDone} round${roundsDone === 1 ? '' : 's'}${fs.existsSync(path.join(sessionDir, roundDirName('tiebreak', roundsDone), 'rulings.json')) ? ' and the Chief Architect ruled on each' : ''}; nothing was signed off.`
-          : `No unanimous zero-concern sign-off after ${roundsDone} rounds (max_rounds ${meta.maxRounds}, sign-off revisions ${signoffBudget}); nothing was presented to the Operator.`;
+        const ruled = fs.existsSync(path.join(sessionDir, roundDirName('tiebreak', roundsDone), 'rulings.json'));
+        const after = `after ${roundsDone} round${roundsDone === 1 ? '' : 's'}`;
+        const reason = !this.config.council.final_arbitration || roundsDone === 0
+          ? `No unanimous zero-concern sign-off after ${roundsDone} rounds (max_rounds ${meta.maxRounds}, sign-off revisions ${signoffBudget}); nothing was presented to the Operator.`
+          : this.readVerdict(sessionDir, roundsDone).converged
+            ? `Review done ${after}: the Chief Engineer had no objections left, and the Chief Architect's review decides the verdict.`
+            : `Review done ${after}: ${ruled ? 'the Chief Architect ruled on every open objection, and the verdict follows from those rulings' : 'objections were still open and no Chief Architect could rule on them'}.`;
         return this.stall(sessionId, task, meta, roundsDone, reason);
       }
 
@@ -149,8 +153,10 @@ export class DeliberationEngine {
     const report = this.writeStallReport(sessionId, task, reason);
     this.sessionManager.setStatus(sessionId, 'STALLED', { reason, partialReport: report || undefined });
     syncBacklogItem(this.pipeline, meta.backlogItem, 'parked', sessionId);
-    logger.council('HARNESS', `Council stalled: ${reason}`);
-    if (report) logger.council('HARNESS', `Partial result (last draft + open objections, not approved): ${report}`);
+    // A review ends on the Architect's rulings by design; only a full run that missed its sign-off has stalled.
+    const review = this.config.council.final_arbitration && /^Review done/.test(reason);
+    logger.council('HARNESS', review ? reason : `Council stalled: ${reason}`);
+    if (report) logger.council('HARNESS', `${review ? 'Last draft and the objections still open' : 'Partial result (last draft + open objections, not approved)'}: ${report}`);
     return { outcome: 'STALLED', rounds: roundsDone, reason, report };
   }
 
@@ -251,7 +257,7 @@ export class DeliberationEngine {
     const reply = this.readIfExists(path.join(sessionDir, roundDirName('round', prev), 'reply.md'));
     if (reply && includeEngineerReply) sections.push(`## Chief Engineer's Reply to Draft v${prev}`, reply, '');
     const rulings = this.readIfExists(path.join(sessionDir, roundDirName('tiebreak', prev), 'reply.md'));
-    if (rulings) sections.push(`## Binding Chief Architect Rulings on Round ${prev}`, 'STANDS: the Lead must adopt the objection. OVERRULED: the Chief Engineer must withdraw it. MEASURE: the stated measurement must be performed and its result recorded.', rulings, '');
+    if (rulings) sections.push(`## Binding Chief Architect Rulings on Round ${prev}`, 'STANDS: the Lead must adopt the objection. MINOR: right but not blocking; adopt it if it is cheap, and the Chief Engineer does not raise it again as an open objection. OVERRULED: the Chief Engineer must withdraw it. MEASURE: the stated measurement must be performed and its result recorded.', rulings, '');
     const review = this.readIfExists(path.join(sessionDir, roundDirName('review', prev), 'reply.md'));
     const lead = this.readIfExists(path.join(sessionDir, roundDirName('signoff', prev), 'reply.md'));
     if (review && !lead) sections.push(`## Chief Architect Review of v${prev} (not signed off — every concern, REQUIRED or ADVISORY, must be resolved)`, review, '');

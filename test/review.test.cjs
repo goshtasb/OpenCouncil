@@ -56,7 +56,7 @@ test('reviewConfig plans seats from what is installed, writes nothing, and cuts 
   assert.equal(config.council.max_rounds, 3);
   assert.equal(config.council.tiebreak_round, 2);
   assert.ok(!fs.existsSync(path.join(repo, '.council')), 'a review leaves no config behind');
-  assert.equal(config.council.final_arbitration, false, 'a debate keeps its old shape');
+  assert.equal(config.council.final_arbitration, true, 'a debate also ends on the Architect\'s rulings');
   await assert.rejects(lib.reviewConfig(repo, 3, new Set()), /No AI CLI is ready to hold a seat.*claude\.ai\/install\.sh/s);
 });
 

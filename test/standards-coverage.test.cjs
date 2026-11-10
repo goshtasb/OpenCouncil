@@ -95,3 +95,12 @@ test('every seat\'s contract treats a note about behaviour outside the repositor
     if (contract === 'member' || contract === 'review') assert.match(text, rule, `${contract} contract says a note removes no defect`);
   }
 });
+
+test('the tie-break contract defines MINOR as right but not blocking, and keeps STANDS for defects that block', () => {
+  const ctx = setup();
+  const text = lib.loadContract('tiebreak', ctx.repo);
+  assert.match(text, /STANDS \| MINOR \| OVERRULED \| MEASURE/);
+  assert.match(text, /`MINOR`: The objection is right but should not block/);
+  assert.match(text, /never blocks a review.s verdict/);
+  assert.match(text, /does not raise it again as an open objection/);
+});

@@ -7,7 +7,7 @@ import { REVIEW_DEBATE_ROUNDS, REVIEW_MAX_ROUNDS, REVIEW_MIN_ROUNDS, REVIEW_ROUN
 import { describeLineup, formatChecks, lineupLines, preflight, readyProviders } from '../review/preflight.js';
 import { findConfigFile, loadConfig } from '../config.js';
 import { ProviderId } from '../setup.js';
-import { nothingFoundText, rulingCounts } from '../replay/markdown-replay.js';
+import { nothingFoundText, rulingNote } from '../replay/markdown-replay.js';
 import { resolveRepoRoot } from '../utils/paths.js';
 import { logger } from '../utils/logger.js';
 import { SessionManager } from '../engine/session.js';
@@ -47,16 +47,10 @@ function configuredModels(repo: string): Partial<Record<ProviderId, string>> | u
   return models;
 }
 
-/** The one bold line under a review: what the seats concluded, in the words of this run's shape. */
-export function outcomeLine(result: Pick<ReviewResult, 'outcome' | 'rounds' | 'replay'>, took: string, singleVendor: boolean): string {
+/** The one bold line under a review: the verdict, how long it took, and what it rests on. */
+export function outcomeLine(result: Pick<ReviewResult, 'verdict' | 'rounds'>, took: string, singleVendor: boolean): string {
   const rounds = `${result.rounds} round${result.rounds === 1 ? '' : 's'}`;
-  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
-  if (result.outcome === 'AWAITING_APPROVAL') return `Every seat signed off after ${rounds} (${took})${singleVendor ? ', all on one vendor' : ''}.`;
-  const lastRound = [...result.replay.rounds].reverse().find(r => r.engineer);
-  const open = lastRound?.engineer?.openObjections;
-  const count = typeof open === 'number' && open !== 999 ? plural(open, 'open objection') : 'open objections';
-  if (lastRound?.tiebreak) return `After ${rounds} the Chief Engineer had ${count}; the Chief Architect ruled ${rulingCounts(lastRound.tiebreak.rulings)} (${took}).`;
-  return `After ${rounds} the Chief Engineer still had ${count} (${took}).`;
+  return `${result.verdict.verdict} after ${rounds} (${took}${singleVendor ? ', all on one vendor' : ''}): ${result.verdict.summary}.`;
 }
 
 export function registerReviewCommands(program: Command, ctx: CliContext): void {
@@ -123,7 +117,7 @@ export function registerReviewCommands(program: Command, ctx: CliContext): void 
       }
       if (options.comment) {
         fs.mkdirSync(path.dirname(path.resolve(options.comment)), { recursive: true });
-        fs.writeFileSync(options.comment, renderPrComment(result.replay, { top: result.top, share: result.share, replayUrl: options.replayUrl, seats: result.seats }), 'utf8');
+        fs.writeFileSync(options.comment, renderPrComment(result.replay, { top: result.top, share: result.share, replayUrl: options.replayUrl, seats: result.seats, verdict: result.verdict }), 'utf8');
       }
       const mins = Math.floor(result.seconds / 60);
       console.log('');
@@ -135,9 +129,9 @@ export function registerReviewCommands(program: Command, ctx: CliContext): void 
       }
       if (result.top.length) {
         console.log(chalk.bold(`\nWhat it found${result.top.length > 3 ? ` (top 3 of ${result.top.length} on the page)` : ''}:`));
-        result.top.slice(0, 3).forEach((o, i) => console.log(`  ${i + 1}. ${o.headline.replace(/\*\*/g, '')}${o.location ? chalk.dim(` (${o.location})`) : ''}\n     ${chalk.dim(`${o.seat}, round ${o.round}${o.ruling === 'STANDS' ? ', upheld by the Chief Architect' : ''}`)}`));
+        result.top.slice(0, 3).forEach((o, i) => console.log(`  ${i + 1}. ${o.headline.replace(/\*\*/g, '')}${o.location ? chalk.dim(` (${o.location})`) : ''}\n     ${chalk.dim(`${o.seat}, round ${o.round}${rulingNote(o) ? `, ${rulingNote(o)}` : ''}`)}`));
       } else {
-        console.log(`\n${nothingFoundText(result.replay)}`);
+        console.log(`\n${nothingFoundText(result.replay, result.verdict)}`);
       }
       console.log(chalk.bold('\nShare it:'));
       console.log(`  ${result.share}`);

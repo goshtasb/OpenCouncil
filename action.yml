@@ -25,7 +25,7 @@ inputs:
 
 outputs:
   outcome:
-    description: 'AWAITING_APPROVAL when every seat signed off, STALLED when objections were still open, SKIPPED when no review ran.'
+    description: 'PASS when no blocking objection is left (minor notes may be), CHANGES_REQUESTED when an objection stands, needs a measurement or was never ruled on, NO_VERDICT when no seat reviewed the change, SKIPPED when no review ran.'
     value: ${{ steps.review.outputs.outcome || steps.guard.outputs.outcome }}
 
 runs:
@@ -110,13 +110,14 @@ runs:
         set -e
         if [ "$status" -ne 0 ]; then
           if grep -qiE 'Failed to authenticate|\b401\b|invalid x-api-key|token is invalid|not logged in|is not signed in' "$OUT.log"; then
-            echo "::error title=Open Council::Claude rejected the login. Make a new token with \`claude setup-token\` (or check the API key) and set the repository secret again."
+            echo "::error title=Open Council::A seat rejected the login it was given. For Claude, make a new token with \`claude setup-token\` (or check the API key) and set the repository secret again. The failing seat is named in this step's log."
           else
             echo "::error title=Open Council::The review did not finish. The last lines of its output are in this step's log."
           fi
           exit "$status"
         fi
-        outcome=$(sed -n 's/^Outcome: \*\*\([A-Z_]*\)\*\*.*/\1/p' "$OUT/review.md" | head -n1)
+        outcome=$(sed -n 's/^Outcome: \*\*\([A-Z_ ]*\)\*\*.*/\1/p' "$OUT/review.md" | head -n1)
+        outcome=${outcome// /_}
         echo "outcome=${outcome:-UNKNOWN}" >> "$GITHUB_OUTPUT"
         cat "$OUT/review.md" >> "$GITHUB_STEP_SUMMARY"
 
