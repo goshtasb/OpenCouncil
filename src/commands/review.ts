@@ -91,7 +91,8 @@ export function registerReviewCommands(program: Command, ctx: CliContext): void 
         checks = await preflight({ models: configuredModels(repo) });
         formatChecks(checks).forEach(line => console.log(line));
       }
-      const ready = checks ? new Set<string>(readyProviders(checks)) : undefined;
+      // With --no-check every installed CLI counts as ready, so config seats on a missing CLI still move up front.
+      const ready = new Set<string>(readyProviders(checks || await preflight({ ping: false })));
       const { config, gates, notes } = await reviewConfig(repo, rounds, ready);
       const lineup = describeLineup(config.seats);
       lineupLines({ seats: config.seats }, checks || undefined).forEach((line, i) => (i === 0 ? logger.info(`Seats: ${line}`) : logger.warn(line)));

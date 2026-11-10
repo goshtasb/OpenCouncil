@@ -400,3 +400,55 @@ test('in a debate, "no objection stands" is only said when nothing made the foun
   assert.doesNotMatch(md, /no objection stands/);
   assert.match(lib.renderReplayMarkdown(replay, { top: [], rounds: false }), /no objection stands \(the Chief Architect overruled the only one\)/);
 });
+
+test('the seat keeps its own provider first even when council.failover_providers leaves it out', async () => {
+  const ctx = quick();
+  const other = new ScriptedAdapter('fake-only-listed', [TWO_OBJECTIONS]);
+  lib.registerAdapter(other.name, other);
+  const calls = [];
+  lib.registerAdapter('claude-code', {
+    name: 'claude-code', canDisableTools: true,
+    async isAvailable() { return true; },
+    async runPrompt(prompt, options) { calls.push(options.model); if (options.model === 'opus') throw Object.assign(new Error('Command failed'), { exitCode: 1, stderr: 'usage limit reached' }); return TWO_OBJECTIONS; }
+  });
+  ctx.config.seats.chief_engineer = { ...ctx.config.seats.chief_engineer, provider: 'claude-code', model: 'opus' };
+  ctx.config.council.failover_providers = [other.name];
+  fs.writeFileSync(path.join(ctx.repo, 'retry.js'), 'x\n');
+  ctx.adapters.pm.responses.push(PLAN(1));
+  ctx.adapters.arch.responses.push(RULINGS);
+  await lib.runReview(ctx.repo, { config: ctx.config, sessions: ctx.sessions, pipeline: ctx.pipeline });
+  assert.deepEqual(calls, ['opus', 'sonnet']);
+  assert.equal(other.calls.length, 0);
+});
+
+test('a model reply that talks about login code is not read as a lost login', () => {
+  assert.notEqual(lib.describeSeatError({ exitCode: 1, stdout: 'The sign in route returns 403 when the session has expired; log in is handled in auth.ts.' }).kind, 'login');
+  assert.equal(lib.describeSeatError({ exitCode: 1, stdout: 'Invalid API key · Please run /login' }).kind, 'login');
+  assert.equal(lib.describeSeatError({ exitCode: 1, stderr: 'Error: OAuth token has expired. Please obtain a new token or refresh your existing token.' }).kind, 'login');
+  assert.equal(lib.describeSeatError({ exitCode: 1, stderr: 'API Error: 401 {"type":"error"}' }).kind, 'login');
+});
+
+test('the Action maps a seat that is not signed in to its "Claude rejected the login" error (the grep in action.yml, run as written)', () => {
+  const yml = fs.readFileSync(path.join(__dirname, '..', 'action.yml'), 'utf8');
+  const m = yml.match(/if grep -qiE '([^']+)' "\$OUT\.log"; then\n\s*echo "::error title=Open Council::Claude rejected the login/);
+  assert.ok(m, 'action.yml still greps the review log for a rejected login');
+  const reason = lib.describeSeatError({ exitCode: 1, stdout: 'Invalid API key · Please run /login' }).reason;
+  const failure = { seat: 'lead_pm', provider: 'claude-code', model: 'sonnet', stage: 'draft v1', kind: 'login', reason, at: '' };
+  const lines = [new lib.SeatUnavailableError('lead_pm', [failure]).message];
+  for (const line of lines) {
+    const r = spawnSync('grep', ['-qiE', m[1]], { input: line + '\n' });
+    assert.equal(r.status, 0, `grep matches: ${line}`);
+  }
+  assert.equal(spawnSync('grep', ['-qiE', m[1]], { input: 'No provider is left for the Chief Engineer seat: Claude hit its usage limit.\n' }).status, 1, 'a usage limit is not called a rejected login');
+});
+
+test('review --no-check still stops up front when the config names only AIs that are not installed', () => {
+  const { env } = fakeClaudeOnPath();
+  const repo = makeRepo();
+  fs.mkdirSync(path.join(repo, '.council'));
+  fs.writeFileSync(path.join(repo, '.council', 'config.yml'), 'seats:\n  lead_pm:\n    provider: "antigravity"\n    model: "gemini-4-argon-high"\n  chief_engineer:\n    provider: "grok-cli"\n    model: "grok-4.6"\n  chief_architect:\n    provider: "grok-cli"\n    model: "grok-4.6"\n');
+  fs.writeFileSync(path.join(repo, 'retry.js'), 'x\n');
+  const r = spawnSync(process.execPath, [bin, 'review', '--no-check', '--no-open'], { cwd: repo, env, encoding: 'utf8' });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stdout + r.stderr, /None of the AIs \.council\/config\.yml names \(Gemini \(agy\) and Grok\) is ready/);
+});

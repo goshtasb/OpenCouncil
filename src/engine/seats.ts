@@ -70,7 +70,8 @@ export function describeSeatError(err: any): { kind: SeatErrorKind; reason: stri
   if (err?.timedOut) return { kind: 'timeout', reason: 'timed out' };
   if (/\b429\b|quota|rate.?limit|resource.?exhausted|usage limit|limit reached|out of credits/i.test(text)) return { kind: 'quota', reason: `hit its usage limit${tail ? ` (${tail})` : ''}` };
   if (/max(imum)?[ _-]?turns/i.test(text)) return { kind: 'max-turns', reason: `stopped at its turn limit${tail ? ` (${tail})` : ''}` };
-  if (/not logged in|please (run )?\/?login|log ?in|sign ?in|unauthori[sz]ed|authenticat|invalid api key|\b401\b|\b403\b|expired/i.test(text)) return { kind: 'login', reason: `is not signed in${tail ? ` (${tail})` : ''}` };
+  // Only phrases a CLI prints about its own login: a model's text about login code must not drop the whole provider.
+  if (/not (logged|signed) in|please (run )?\/?login|run \/login|(log|sign) in again|unauthori[sz]ed|authentication (failed|error|required)|failed to authenticate|invalid (api key|x-api-key|token)|token (has )?expired|\b401\b/i.test(text)) return { kind: 'login', reason: `is not signed in${tail ? ` (${tail})` : ''}` };
   return { kind: 'error', reason: tail ? `failed: ${tail}` : `exited with code ${err?.exitCode ?? 'unknown'}` };
 }
 
@@ -123,14 +124,15 @@ export function isDropped(record: Pick<SeatsRecord, 'failures'>, provider: strin
  * registry, and able to run with no tools when the call needs none (the Chief Architect judges only the text it is given).
  */
 function nextProvider(config: CouncilConfig, seat: SeatName, record: SeatsRecord, needsNoTools: boolean, defaults: Record<string, string>): SeatAssignment | null {
-  // The seat's own provider comes first, so a Claude seat tries its other model before leaving Claude.
-  const list = config.council.failover_providers || [];
+  // The seat's own provider always comes first, listed or not: it already holds the seat, so trying its other model
+  // (Claude's sonnet after opus) sends nothing to a new vendor.
   const current = config.seats[seat].provider;
-  for (const provider of list.includes(current) ? [current, ...list.filter(p => p !== current)] : list) {
+  for (const provider of [current, ...(config.council.failover_providers || []).filter(p => p !== current)]) {
     let adapter;
     try { adapter = getAdapter(provider); } catch { continue; }
     if (needsNoTools && adapter.canDisableTools === false) continue;
-    const model = failoverModels(provider, seat, defaults).find(m => !isDropped(record, provider, m));
+    // The seat's own provider is retried only on a model it knows by name, never on an empty default.
+    const model = failoverModels(provider, seat, defaults).find(m => (provider !== current || m) && !isDropped(record, provider, m));
     if (model !== undefined) return { provider, model };
   }
   return null;
