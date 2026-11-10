@@ -54,6 +54,30 @@ test('quick review (the default): one call per seat, and the Chief Architect rul
   assert.match(fs.readFileSync(result.htmlPath, 'utf8'), /rulings on round 1: 1 upheld, 1 overruled/);
 });
 
+test('a debate ends on the Chief Architect\'s rulings too: it rules after round 1 and again after the last round', async () => {
+  const ctx = quick({ max_rounds: 2, tiebreak_round: 1, signoff_revisions: 1 });
+  fs.writeFileSync(path.join(ctx.repo, 'retry.js'), 'while (true) retry();\n');
+  ctx.adapters.pm.responses.push(PLAN(1), PLAN(2));
+  ctx.adapters.eng.responses.push(TWO_OBJECTIONS, TWO_OBJECTIONS);
+  ctx.adapters.arch.responses.push(RULINGS, 'RULING 1: STANDS — still retried.\nRULING 2: MINOR — naming.\nSUMMARY: One stands.');
+  const result = await lib.runReview(ctx.repo, { config: ctx.config, sessions: ctx.sessions, pipeline: ctx.pipeline });
+  assert.equal(result.rounds, 2);
+  assert.equal(ctx.adapters.arch.calls.length, 2, 'one ruling per round, the last one included');
+  assert.ok(ctx.adapters.arch.calls.every(c => /^# Council Tie-Break/.test(c.prompt)));
+  assert.ok(fs.existsSync(path.join(ctx.sessions.getSessionPath(result.sessionId), 'tiebreak-02', 'rulings.json')));
+  assert.equal(result.verdict.verdict, 'CHANGES REQUESTED');
+  assert.equal(result.verdict.summary, '1 objection stands; 1 minor note');
+  // Without the final ruling the last round's objections stay unruled, and the review cannot pass on them.
+  const before = quick({ max_rounds: 2, tiebreak_round: 1, signoff_revisions: 1, final_arbitration: false });
+  fs.writeFileSync(path.join(before.repo, 'retry.js'), 'x\n');
+  before.adapters.pm.responses.push(PLAN(1), PLAN(2));
+  before.adapters.eng.responses.push(TWO_OBJECTIONS, TWO_OBJECTIONS);
+  before.adapters.arch.responses.push(RULINGS);
+  const old = await lib.runReview(before.repo, { config: before.config, sessions: before.sessions, pipeline: before.pipeline });
+  assert.equal(before.adapters.arch.calls.length, 1);
+  assert.equal(old.verdict.verdict, 'CHANGES REQUESTED');
+});
+
 test('quick review with no objections: the Architect signs off, the Lead signs off, and nothing else is spent', async () => {
   const ctx = quick();
   fs.writeFileSync(path.join(ctx.repo, 'a.js'), 'module.exports = 1;\n');

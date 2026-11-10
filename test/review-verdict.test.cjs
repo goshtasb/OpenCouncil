@@ -103,3 +103,34 @@ test('login: Claude Code\'s own login lines count wherever it prints them; other
   assert.equal(kind({ stderr: 'Error: 403 permission denied', exitCode: 1 }), 'login');
   assert.equal(kind({ stderr: 'You are not signed in. Please sign in again.', exitCode: 1 }), 'login');
 });
+
+test('an upheld objection blocks even when the Chief Engineer later reports nothing open, or the seats sign off the brief', () => {
+  const quiet = replay([
+    { n: 1, engineer: { reply: objections('The retry never stops'), openObjections: 1 }, tiebreak: ruled('STANDS') },
+    { n: 2, engineer: { reply: 'VERDICT: SHIP IT\nOPEN OBJECTIONS: 0', openObjections: 0 } }
+  ]);
+  assert.equal(lib.reviewVerdict(quiet).verdict, 'CHANGES REQUESTED');
+  assert.equal(lib.reviewVerdict({ ...quiet, status: 'AWAITING_APPROVAL' }).verdict, 'CHANGES REQUESTED');
+  // A MEASURE is not cleared that way either; only a later ruling on the same objection changes it.
+  const measured = replay([
+    { n: 1, engineer: { reply: objections('Speedup unproven'), openObjections: 1 }, tiebreak: ruled('MEASURE') },
+    { n: 2, engineer: { reply: objections('Speedup unproven'), openObjections: 1 }, tiebreak: ruled('MINOR') }
+  ]);
+  assert.equal(lib.reviewVerdict(measured).verdict, 'PASS');
+});
+
+test('the same defect restated in a later round, at the same file:line, is counted once', () => {
+  const r = replay([
+    { n: 1, engineer: { reply: '1. **Retry never stops (src/a.js:9).** x', openObjections: 1 }, tiebreak: ruled('STANDS') },
+    { n: 2, engineer: { reply: '1. **The loop at src/a.js:9 still retries 4xx.** x', openObjections: 1 }, tiebreak: ruled('STANDS') }
+  ]);
+  assert.equal(lib.reviewVerdict(r).stands, 1);
+  assert.equal(lib.topObjections(r, 5).length, 1);
+});
+
+test('a long model answer on stdout that contains a login line is not a lost login', () => {
+  const answer = ['Here is my review.', 'Failed to authenticate. API Error: 401 OAuth access token is invalid.', 'That line is what the CLI prints when the token is wrong.', 'The change handles it.'].join('\n');
+  assert.notEqual(lib.describeSeatError({ stdout: answer, exitCode: 1 }).kind, 'login');
+  assert.equal(lib.describeSeatError({ stdout: 'Invalid API key · Please run /login', exitCode: 1 }).kind, 'login');
+  assert.equal(lib.describeSeatError({ stderr: 'Failed to authenticate', exitCode: 1 }).kind, 'login');
+});

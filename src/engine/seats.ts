@@ -70,14 +70,18 @@ export function describeSeatError(err: any): { kind: SeatErrorKind; reason: stri
   if (err?.timedOut) return { kind: 'timeout', reason: 'timed out' };
   if (/\b429\b|quota|rate.?limit|resource.?exhausted|usage limit|limit reached|out of credits/i.test(text)) return { kind: 'quota', reason: `hit its usage limit${tail ? ` (${tail})` : ''}` };
   if (/max(imum)?[ _-]?turns/i.test(text)) return { kind: 'max-turns', reason: `stopped at its turn limit${tail ? ` (${tail})` : ''}` };
-  // Only what a CLI prints about its own login counts, so a model's text about login code never drops the provider.
-  // stdout can hold model text, so it counts only for Claude Code's own login lines (Claude prints them on stdout).
+  // Only what a CLI prints about its own login counts, so a model's text about logins never drops the provider.
+  // stdout can hold model text, so it counts only for Claude Code's own login lines, and only when stdout is that short
+  // message and nothing else: Claude prints its login failure as one or two lines on stdout, where an answer runs longer.
   // Everything else, a bare 401 or 403 included, counts only on stderr or execa's exit line, where no model text goes.
   // execa's message repeats stdout, so the exit line is its shortMessage when there is one.
+  const CLAUDE_LOGIN = /^(invalid api key|please run \/login|failed to authenticate|oauth (access )?token (is invalid|has expired)|invalid bearer token|not logged in)/i;
+  const outLines = String(typeof err?.stdout === 'string' ? err.stdout : '').split('\n').map(l => l.trim()).filter(Boolean);
+  const stdoutLogin = outLines.length > 0 && outLines.length <= 3 && outLines.some(l => CLAUDE_LOGIN.test(l));
   const exitLine = typeof err?.shortMessage === 'string' ? err.shortMessage.split(err.command || '\u0000').join('<command>') : message;
   const errText = `${typeof err?.stderr === 'string' ? err.stderr : ''}\n${exitLine}`;
-  if (/invalid api key|please run \/login|failed to authenticate|oauth (access )?token (is invalid|has expired)|invalid bearer token|not logged in/i.test(text)
-    || /not (logged|signed) in|please (log|sign) ?in|(log|sign) in again|unauthori[sz]ed|authenticat|invalid (x-api-key|token)|(token|session|credentials?|login) (has |have )?expired|permission[_ ]denied|\b40[13]\b/i.test(errText)) return { kind: 'login', reason: `is not signed in${tail ? ` (${tail})` : ''}` };
+  if (stdoutLogin
+    || /invalid api key|please run \/login|not (logged|signed) in|please (log|sign) ?in|(log|sign) in again|unauthori[sz]ed|authenticat|invalid (x-api-key|token|bearer token)|oauth (access )?token|(token|session|credentials?|login) (has |have )?expired|permission[_ ]denied|\b40[13]\b/i.test(errText)) return { kind: 'login', reason: `is not signed in${tail ? ` (${tail})` : ''}` };
   return { kind: 'error', reason: tail ? `failed: ${tail}` : `exited with code ${err?.exitCode ?? 'unknown'}` };
 }
 

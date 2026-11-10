@@ -248,10 +248,13 @@ const asRuling = (r?: string): Ruling | undefined => {
 /**
  * Every objection the review raised, once, with the last ruling the Chief Architect gave it and where it stands now:
  * - blocking: upheld (STANDS), sent to be measured (MEASURE), or still open in the last round with no ruling at all.
- *   A review never changes the code between rounds, so an objection upheld in an earlier round still blocks.
+ *   A review never changes the code between rounds, so an upheld objection blocks until a later ruling on it says
+ *   otherwise. The Chief Engineer going quiet about it, or the seats signing off the brief, does not clear it.
  * - minor: ruled MINOR, or an advisory concern in the Chief Architect's latest review. Right, but it does not block.
- * - resolved: raised earlier and settled since: the Chief Engineer did not raise it again and nobody had upheld it, or the
- *   Chief Engineer ended with no open objection, or every seat signed off. Shown, never counted.
+ * - resolved: never upheld, and settled since: the Chief Engineer did not raise it again, ended with no open objection,
+ *   or every seat signed off. Shown, never counted.
+ * When the Chief Engineer restates an upheld objection in a later round in other words, both cite the same file:line;
+ * the later one is folded into the earlier so one defect is not counted twice. The verdict is the same either way.
  * OVERRULED objections are left out. Of the Chief Architect's own reviews, only the latest one's concerns still count.
  */
 function judgedObjections(replay: SessionReplay): { kept: Judged[]; overruled: number; orphans: Record<'stands' | 'measure' | 'minor' | 'unruled', number> } {
@@ -290,7 +293,10 @@ function judgedObjections(replay: SessionReplay): { kept: Judged[]; overruled: n
   for (const o of byKey.values()) {
     if (o.final === 'OVERRULED') continue;
     const ruling = o.final === 'STANDS' || o.final === 'MEASURE' || o.final === 'MINOR' ? { ruling: o.final } : {};
-    const state: TopObjection['state'] = cleared || (!o.final && o.latest !== last?.n) ? 'resolved' : o.final === 'MINOR' ? 'minor' : 'blocking';
+    const state: TopObjection['state'] = o.final === 'STANDS' || o.final === 'MEASURE' ? 'blocking'
+      : o.final === 'MINOR' ? 'minor'
+        : cleared || o.latest !== last?.n ? 'resolved' : 'blocking';
+    if (state === 'blocking' && o.location && kept.some(k => k.state === 'blocking' && k.location === o.location)) continue;
     kept.push({ ...o, ...ruling, state });
   }
   const reviews = replay.rounds.filter(r => r.architect);
