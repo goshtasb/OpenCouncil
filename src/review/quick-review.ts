@@ -4,7 +4,7 @@ import { spawnSync } from 'child_process';
 import { CouncilConfig } from '../types.js';
 import { DEFAULT_CONFIG, findConfigFile, loadConfig } from '../config.js';
 import { PROVIDER_FIXES, SeatsPlan, detectProviders, planSeats } from '../setup.js';
-import { SessionReplay, TopObjection, loadSessionReplay, objectionHeadlines } from '../replay/session-replay.js';
+import { ReviewVerdict, SessionReplay, TopObjection, loadSessionReplay, objectionHeadlines } from '../replay/session-replay.js';
 import { renderReplayHtml } from '../replay/html.js';
 import { allOverruled, renderReplayMarkdown } from '../replay/markdown-replay.js';
 import { SessionManager } from '../engine/session.js';
@@ -125,10 +125,10 @@ export async function reviewConfig(repo: string, rounds = REVIEW_ROUNDS, found?:
     profile: 'quick',
     max_rounds: max,
     tiebreak_round: Math.max(1, max - 1),
-    // One round means one call per seat: no revision rounds after a sign-off review, and the Architect rules on
-    // whatever objections are still open instead of the run ending on them unjudged.
+    // One round means one call per seat: no revision rounds after a sign-off review.
     signoff_revisions: quick ? 0 : 1,
-    final_arbitration: quick,
+    // Every review ends on the Architect's rulings, so its verdict rests on them and not on a PRD sign-off.
+    final_arbitration: true,
     seat_failover: true,
     failover_providers: order.filter(p => allowed.has(p)),
     round_timeout_seconds: Math.min(config.council.round_timeout_seconds || 600, 600)
@@ -195,8 +195,8 @@ export function changeReviewTask(change: ReviewChange): string {
   return [
     'Review this change before it ships.',
     'Lead PM: write the brief and PRD that this change implies: what it is for, what it claims to do, and how we would know it works. Do not invent scope the diff does not show.',
-    'Chief Engineer: check every claim against the repository and the diff. Object, with file:line, wherever the change is wrong, incomplete, untested, or breaks something that depends on it.',
-    'Chief Architect: rule on whether it should ship as is.',
+    'Chief Engineer: check every claim against the repository and the diff. Object, with file:line, to defects in the change and in the code it touches: wrong behaviour, a broken caller, a security or data-loss risk, a changed behaviour with no test. The Lead PM\'s brief only restates the change, so do not object to its wording, numbering or test plan. Say so when an objection is minor (naming, style, a nice-to-have).',
+    'Chief Architect: rule on each open objection. STANDS only for a defect that should block shipping, MINOR for one that is right but should not block, OVERRULED for one that is wrong. The review passes when nothing blocking is left.',
     REVIEW_TASK_CLAIMS_LINE,
     '',
     checkout,
@@ -236,39 +236,132 @@ const LOCATION = /(?<![\w./-])[\w./-]*[\w-]\.[A-Za-z]{1,5}:\d+(?:-\d+)?\b/;
 /** The first file:line an objection cites, keeping a leading dot (`.github/...`). */
 export const findLocation = (text: string) => LOCATION.exec(text)?.[0];
 
+type Ruling = 'STANDS' | 'MINOR' | 'OVERRULED' | 'MEASURE';
+interface Judged extends TopObjection { latest: number; final?: Ruling }
+
+const keyOf = (headline: string) => headline.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 60);
+const asRuling = (r?: string): Ruling | undefined => {
+  const u = String(r || '').toUpperCase();
+  return u === 'STANDS' || u === 'MINOR' || u === 'OVERRULED' || u === 'MEASURE' ? u : undefined;
+};
+
 /**
- * The objections worth leading with: the Chief Engineer's, earliest round first (later rounds argue over the fix plan),
- * those that cite a file:line ahead of those that don't, then the Chief Architect's required concerns. Duplicates across rounds are dropped.
- * Where the Chief Architect ruled on a round, an objection it OVERRULED is left out and one it upheld (STANDS) leads.
+ * Every objection the review raised, once, with the last ruling the Chief Architect gave it and where it stands now:
+ * - blocking: upheld (STANDS), sent to be measured (MEASURE), or still open in the last round with no ruling at all.
+ *   A review never changes the code between rounds, so an objection upheld in an earlier round still blocks.
+ * - minor: ruled MINOR, or an advisory concern in the Chief Architect's latest review. Right, but it does not block.
+ * - resolved: raised earlier and settled since: the Chief Engineer did not raise it again and nobody had upheld it, or the
+ *   Chief Engineer ended with no open objection, or every seat signed off. Shown, never counted.
+ * OVERRULED objections are left out. Of the Chief Architect's own reviews, only the latest one's concerns still count.
  */
-export function topObjections(replay: SessionReplay, limit = 3): TopObjection[] {
-  const all: TopObjection[] = [];
-  for (const round of replay.rounds) {
-    if (round.engineer && (round.engineer.openObjections ?? 1) > 0) {
-      for (const o of engineerObjections(round.engineer.reply)) {
-        const ruling = round.tiebreak?.rulings.find(r => r.id === o.n)?.ruling;
-        if (ruling === 'OVERRULED') continue;
-        all.push({ round: round.n, seat: 'Chief Engineer', headline: o.headline, evidence: o.evidence, location: findLocation(`${o.headline} ${o.evidence}`), ...(ruling === 'STANDS' || ruling === 'MEASURE' ? { ruling } : {}) });
-      }
+function judgedObjections(replay: SessionReplay): { kept: Judged[]; overruled: number; orphans: Record<'stands' | 'measure' | 'minor' | 'unruled', number> } {
+  const engineerRounds = replay.rounds.filter(r => r.engineer);
+  const last = engineerRounds[engineerRounds.length - 1];
+  const signedOff = replay.status === 'AWAITING_APPROVAL' || replay.status === 'APPROVED';
+  const cleared = signedOff || last?.engineer?.openObjections === 0;
+  const byKey = new Map<string, Judged>();
+  const orphans = { stands: 0, measure: 0, minor: 0, unruled: 0 };
+  let overruled = 0;
+  for (const round of engineerRounds) {
+    const open = round.engineer!.openObjections ?? 1;
+    if (open === 0) continue;
+    const parsed = engineerObjections(round.engineer!.reply);
+    const rulings = round.tiebreak?.rulings || [];
+    for (const o of parsed) {
+      const ruling = asRuling(rulings.find(r => r.id === o.n)?.ruling);
+      const key = keyOf(o.headline);
+      const earlier = byKey.get(key);
+      byKey.set(key, {
+        round: earlier ? earlier.round : round.n, seat: 'Chief Engineer', headline: earlier ? earlier.headline : o.headline, evidence: o.evidence,
+        location: findLocation(`${o.headline} ${o.evidence}`) || earlier?.location, latest: round.n, final: ruling || earlier?.final
+      });
     }
-    if (round.architect) {
-      for (const c of round.architect.concerns.filter(c => /REQUIRED/i.test(c.type))) {
-        all.push({ round: round.n, seat: 'Chief Architect', headline: c.description.split(/(?<=\.)\s/)[0], evidence: c.description, location: findLocation(c.description) });
+    if (round === last && !cleared) {
+      overruled = rulings.filter(r => asRuling(r.ruling) === 'OVERRULED').length;
+      // Rulings on objections the parser could not read still count, and so does an open count with nothing readable behind it.
+      for (const r of rulings.filter(r => !parsed.some(o => o.n === r.id))) {
+        const k = asRuling(r.ruling);
+        if (k === 'STANDS') orphans.stands++; else if (k === 'MEASURE') orphans.measure++; else if (k === 'MINOR') orphans.minor++; else if (!k) orphans.unruled++;
       }
+      if (!parsed.length && !rulings.length) orphans.unruled += open === 999 ? 1 : open;
     }
   }
-  const seen = new Set<string>();
-  const unique = all.filter(o => {
-    const key = o.headline.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 60);
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  const kept: Judged[] = [];
+  for (const o of byKey.values()) {
+    if (o.final === 'OVERRULED') continue;
+    const ruling = o.final === 'STANDS' || o.final === 'MEASURE' || o.final === 'MINOR' ? { ruling: o.final } : {};
+    const state: TopObjection['state'] = cleared || (!o.final && o.latest !== last?.n) ? 'resolved' : o.final === 'MINOR' ? 'minor' : 'blocking';
+    kept.push({ ...o, ...ruling, state });
+  }
+  const reviews = replay.rounds.filter(r => r.architect);
+  for (const round of reviews) {
+    const latest = round === reviews[reviews.length - 1];
+    for (const c of round.architect!.concerns) {
+      const required = /REQUIRED/i.test(c.type);
+      if (!required && !(latest && /ADVISORY/i.test(c.type))) continue;
+      const headline = c.description.split(/(?<=\.)\s/)[0];
+      if (byKey.has(keyOf(headline))) continue;
+      byKey.set(keyOf(headline), {} as Judged);
+      const state: TopObjection['state'] = !latest || signedOff ? 'resolved' : required ? 'blocking' : 'minor';
+      kept.push({ round: round.n, seat: 'Chief Architect', headline, evidence: c.description, location: findLocation(c.description), latest: round.n, state });
+    }
+  }
+  return { kept, overruled, orphans };
+}
+
+/**
+ * The objections worth leading with: those that block first, then the minor notes, then those settled along the way.
+ * Within each, the Chief Engineer's earliest round first (later rounds argue over the fix plan), those that cite a
+ * file:line ahead of those that don't, then the Chief Architect's own concerns. An objection it OVERRULED is left out.
+ */
+export function topObjections(replay: SessionReplay, limit = 3): TopObjection[] {
+  const { kept } = judgedObjections(replay);
   // Headlines that lean on the session's own labels ("ruling R2", "FR7") mean little to anyone outside it.
   const jargon = (o: TopObjection) => (/\b(N?FR|R)\d+\b|\bruling\b/i.test(o.headline) ? 5 : 0);
   const upheld = (o: TopObjection) => (o.ruling === 'STANDS' ? 0 : o.ruling === 'MEASURE' ? 1 : 2);
-  const rank = (o: TopObjection) => (o.seat === 'Chief Engineer' ? 0 : 100) + (o.location ? 0 : 10) + jargon(o) + o.round * 8 + upheld(o);
-  return unique.map((o, i) => ({ o, i })).sort((a, b) => rank(a.o) - rank(b.o) || a.i - b.i).slice(0, limit).map(x => x.o);
+  const tier = (o: TopObjection) => (o.state === 'minor' ? 1000 : o.state === 'resolved' ? 2000 : 0);
+  const rank = (o: TopObjection) => tier(o) + (o.seat === 'Chief Engineer' ? 0 : 100) + (o.location ? 0 : 10) + jargon(o) + o.round * 8 + upheld(o);
+  return kept.map((o, i) => ({ o, i })).sort((a, b) => rank(a.o) - rank(b.o) || a.i - b.i).slice(0, limit)
+    .map(({ o }) => { const { latest, final, ...top } = o; return top; });
+}
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+/** The review's verdict. PASS needs nothing blocking left; it never needs every seat to sign off the PRD. */
+export function reviewVerdict(replay: SessionReplay): ReviewVerdict {
+  const signedOff = replay.status === 'AWAITING_APPROVAL' || replay.status === 'APPROVED';
+  const { kept, overruled, orphans } = judgedObjections(replay);
+  const blockingNow = kept.filter(o => o.state === 'blocking');
+  const count = (f: (o: Judged) => boolean) => blockingNow.filter(f).length;
+  const stands = count(o => o.ruling === 'STANDS') + orphans.stands;
+  const measure = count(o => o.ruling === 'MEASURE') + orphans.measure;
+  // A RETHINK with no concern behind it still says the change should not ship as is.
+  const rethink = !signedOff && /RETHINK/i.test([...replay.rounds].reverse().find(r => r.architect)?.architect?.verdict || '');
+  const required = Math.max(count(o => o.seat === 'Chief Architect'), rethink ? 1 : 0);
+  const unruled = count(o => o.seat === 'Chief Engineer' && !o.ruling) + orphans.unruled;
+  const minor = kept.filter(o => o.state === 'minor').length + orphans.minor;
+  const reviewed = replay.rounds.some(r => r.engineer);
+  const blocking = stands + measure + required + unruled;
+  const notes = minor ? plural(minor, 'minor note') : '';
+  let verdict: ReviewVerdict['verdict'];
+  let summary: string;
+  if (!reviewed && !signedOff) {
+    verdict = 'NO VERDICT';
+    summary = 'no seat reviewed the change';
+  } else if (blocking) {
+    verdict = 'CHANGES REQUESTED';
+    summary = [
+      stands && `${plural(stands, 'objection stands', 'objections stand')}`,
+      measure && `${measure} to verify`,
+      required && `${plural(required, 'concern', 'concerns')} the Chief Architect marked required`,
+      unruled && `${plural(unruled, 'objection', 'objections')} nobody ruled on`
+    ].filter(Boolean).join(', ') + (notes ? `; ${notes}` : '') + (overruled ? `; the Chief Architect overruled ${plural(overruled, 'objection')}` : '');
+  } else {
+    verdict = 'PASS';
+    summary = [signedOff && !minor ? 'every seat signed off' : 'no blocking objection', notes, overruled && `the Chief Architect overruled ${plural(overruled, 'objection')}`]
+      .filter(Boolean).join('; ');
+  }
+  return { verdict, stands, measure, unruled, required, minor, overruled, signedOff, summary };
 }
 
 const clean = (s: string) => s.replace(/\*\*(.+?)\*\*/g, '$1').replace(/`([^`]+)`/g, '$1').replace(/\s+/g, ' ').trim();
@@ -288,20 +381,29 @@ export function councilPhrase(replay: SessionReplay): string {
   return `${seats === 3 ? 'three' : seats === 2 ? 'two' : 'one'} ${vendors[0]} seat${seats === 1 ? '' : 's'}${models.length ? ` (${joinNames(models)})` : ''}`;
 }
 
-/** One line someone can paste anywhere: what the council found, in its own words, and how to run one. */
-export function shareLine(replay: SessionReplay, top: TopObjection[]): string {
+/** One line someone can paste anywhere: the verdict, the first objection in the council's own words, and how to run one. */
+export function shareLine(replay: SessionReplay, top: TopObjection[], verdict: ReviewVerdict = reviewVerdict(replay)): string {
   const who = councilPhrase(replay);
-  const count = top.length;
-  if (!count) {
-    const subject = /^Review this change before it ships\./.test(replay.task) ? 'change' : 'plan';
-    const overruled = allOverruled(replay);
-    return `${who[0].toUpperCase()}${who.slice(1)} reviewed my ${subject}${overruled ? `: the Chief Engineer objected ${overruled === 1 ? 'once' : `${overruled} times`} and the Chief Architect overruled ${overruled === 1 ? 'it' : 'every one'}` : ' and found nothing to object to'}. Try it on yours: npx open-council-cli review`;
-  }
-  const first = clean(top[0].headline).replace(/[.:;]+$/, '');
-  const where = top[0].location ? ` (${top[0].location})` : '';
-  const what = /^Review this change before it ships\./.test(replay.task) ? 'my change before shipping it' : 'my plan before building it';
+  const Who = `${who[0].toUpperCase()}${who.slice(1)}`;
+  const subject = /^Review this change before it ships\./.test(replay.task) ? 'change' : 'plan';
+  const tryIt = 'Try it on yours: npx open-council-cli review';
   const verb = replay.rounds.filter(r => r.engineer).length > 1 ? 'argue over' : 'review';
-  return `I had ${who} ${verb} ${what}. First objection, from the ${top[0].seat}${top[0].ruling === 'STANDS' ? ', upheld by the Chief Architect' : ''}: "${first}"${where}. Try it on yours: npx open-council-cli review`;
+  const what = subject === 'change' ? 'my change before shipping it' : 'my plan before building it';
+  const first = top.find(o => o.state !== 'minor' && o.state !== 'resolved') || (verdict.verdict === 'PASS' ? top[0] : undefined);
+  if (first) {
+    const headline = clean(first.headline).replace(/[.:;]+$/, '');
+    const where = first.location ? ` (${first.location})` : '';
+    const passed = verdict.verdict === 'PASS' ? `, and it passed${verdict.minor ? ` with ${plural(verdict.minor, 'minor note')}` : ''}` : '';
+    const kind = first.state === 'minor' ? 'First note' : 'First objection';
+    const upheld = first.state !== 'minor' && first.state !== 'resolved' && first.ruling === 'STANDS' ? ', upheld by the Chief Architect' : '';
+    return `I had ${who} ${verb} ${what}${passed}. ${kind}, from the ${first.seat}${upheld}: "${headline}"${where}. ${tryIt}`;
+  }
+  if (verdict.verdict === 'PASS') {
+    const overruled = verdict.overruled || allOverruled(replay);
+    const objected = overruled ? `: the Chief Engineer objected ${overruled === 1 ? 'once' : `${overruled} times`} and the Chief Architect overruled ${overruled === 1 ? 'it' : 'every one'}` : ' and found nothing to object to';
+    return `${Who} reviewed my ${subject}${objected}. ${tryIt}`;
+  }
+  return `${Who} reviewed my ${subject}: ${verdict.summary}. ${tryIt}`;
 }
 
 /** The seats line and any gaps, for the top of a review page: who answered, and which seat failed and who took it. */
@@ -334,7 +436,10 @@ export interface ReviewOptions {
 
 export interface ReviewResult {
   sessionId: string;
+  /** How the deliberation ended: AWAITING_APPROVAL when every seat signed off the PRD, else STALLED. */
   outcome: 'AWAITING_APPROVAL' | 'STALLED';
+  /** What the review comes to, from the Chief Architect's rulings. */
+  verdict: ReviewVerdict;
   rounds: number;
   seconds: number;
   replay: SessionReplay;
@@ -386,11 +491,12 @@ export async function runReview(repo: string, options: ReviewOptions = {}): Prom
   const dir = sessions.getSessionPath(sessionId);
   const replay = loadSessionReplay(dir);
   const top = topObjections(replay, 5);
-  const share = shareLine(replay, top);
+  const verdict = reviewVerdict(replay);
+  const share = shareLine(replay, top, verdict);
   const seats = seatSummary(replay);
   const htmlPath = path.join(dir, 'review.html');
   const mdPath = path.join(dir, 'review.md');
-  fs.writeFileSync(htmlPath, renderReplayHtml(replay, { top, share, seats }), 'utf8');
-  fs.writeFileSync(mdPath, renderReplayMarkdown(replay, { top, share, seats }), 'utf8');
-  return { sessionId, outcome: result.outcome, rounds: result.rounds, seconds: Math.round((Date.now() - started) / 1000), replay, top, share, htmlPath, mdPath, seats };
+  fs.writeFileSync(htmlPath, renderReplayHtml(replay, { top, share, seats, verdict }), 'utf8');
+  fs.writeFileSync(mdPath, renderReplayMarkdown(replay, { top, share, seats, verdict }), 'utf8');
+  return { sessionId, outcome: result.outcome, verdict, rounds: result.rounds, seconds: Math.round((Date.now() - started) / 1000), replay, top, share, htmlPath, mdPath, seats };
 }

@@ -1,0 +1,105 @@
+// A review's verdict comes from the Chief Architect's rulings, not from a PRD sign-off: PASS when nothing that blocks
+// is left, CHANGES REQUESTED when an objection stands, needs a measurement or was never ruled on. No model is called.
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { spawnSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+const { lib } = require('./helpers.cjs');
+
+const objections = (...headlines) => [`VERDICT: SHIP WITH CHANGES`, `OPEN OBJECTIONS: ${headlines.length}`, '',
+  ...headlines.map((h, i) => `${i + 1}. **${h} (src/a.js:${i + 1}).** Evidence for it.`)].join('\n');
+const ruled = (...rulings) => ({ reply: '', rulings: rulings.map((ruling, i) => ({ id: i + 1, ruling, reason: 'r' })) });
+const replay = (rounds, status = 'STALLED') => ({ slug: 's', profile: 'quick', baseSha: 'abcdef1234', status, task: 'Review this change before it ships.\n...', rounds, seats: null });
+
+test('parseTieBreak reads MINOR as a ruling of its own', () => {
+  const t = lib.parseTieBreak('RULING 1: MINOR — naming only\nRULING 2: STANDS — breaks callers\nSUMMARY: s', 1, 2);
+  assert.deepEqual(t.rulings.map(r => r.ruling), ['MINOR', 'STANDS']);
+});
+
+test('every objection ruled MINOR: the review passes, and the notes are shown as notes, not blockers', () => {
+  const r = replay([{ n: 1, engineer: { reply: objections('Rename the helper', 'Tighten the wording'), openObjections: 2 }, tiebreak: ruled('MINOR', 'MINOR') }]);
+  const v = lib.reviewVerdict(r);
+  assert.equal(v.verdict, 'PASS');
+  assert.equal(v.summary, 'no blocking objection; 2 minor notes');
+  const top = lib.topObjections(r, 5);
+  assert.deepEqual(top.map(o => o.state), ['minor', 'minor']);
+  const md = lib.renderReplayMarkdown(r, { top, verdict: v, rounds: false });
+  assert.match(md, /^Outcome: \*\*PASS\*\* after 1 round: no blocking objection; 2 minor notes/m);
+  assert.match(md, /the Chief Architect ruled it minor: right, but it does not block/);
+  assert.match(lib.shareLine(r, top, v), /and it passed with 2 minor notes\. First note, from the Chief Engineer: "Rename the helper/);
+});
+
+test('one objection that stands is enough for CHANGES REQUESTED, and it leads the found list ahead of the minor ones', () => {
+  const r = replay([{ n: 1, engineer: { reply: objections('Style nit', 'The retry never stops'), openObjections: 2 }, tiebreak: ruled('MINOR', 'STANDS') }]);
+  const v = lib.reviewVerdict(r);
+  assert.equal(v.verdict, 'CHANGES REQUESTED');
+  assert.equal(v.summary, '1 objection stands; 1 minor note');
+  const top = lib.topObjections(r, 5);
+  assert.match(top[0].headline, /retry never stops/);
+  assert.equal(top[0].state, 'blocking');
+  assert.match(lib.shareLine(r, top, v), /First objection, from the Chief Engineer, upheld by the Chief Architect: "The retry never stops/);
+});
+
+test('objections nobody ruled on block: a missing Chief Architect never turns into a pass', () => {
+  const r = replay([{ n: 1, engineer: { reply: objections('Breaks the caller'), openObjections: 1 } }]);
+  const v = lib.reviewVerdict(r);
+  assert.equal(v.verdict, 'CHANGES REQUESTED');
+  assert.equal(v.summary, '1 objection nobody ruled on');
+  // An open count with nothing the parser can read behind it still blocks.
+  assert.equal(lib.reviewVerdict(replay([{ n: 1, engineer: { reply: 'it is wrong', openObjections: 999 } }])).verdict, 'CHANGES REQUESTED');
+});
+
+test('MEASURE blocks until someone measures it', () => {
+  const r = replay([{ n: 1, engineer: { reply: objections('The claimed speedup is unproven'), openObjections: 1 }, tiebreak: ruled('MEASURE') }]);
+  assert.deepEqual([lib.reviewVerdict(r).verdict, lib.reviewVerdict(r).summary], ['CHANGES REQUESTED', '1 to verify']);
+});
+
+test('in a debate, an objection upheld in round 1 still blocks when round 2 argues about something else', () => {
+  const r = replay([
+    { n: 1, engineer: { reply: objections('The retry never stops'), openObjections: 1 }, tiebreak: ruled('STANDS') },
+    { n: 2, engineer: { reply: objections('FR numbering is off'), openObjections: 1 }, tiebreak: ruled('MINOR') }
+  ]);
+  const v = lib.reviewVerdict(r);
+  assert.equal(v.verdict, 'CHANGES REQUESTED');
+  assert.equal(v.summary, '1 objection stands; 1 minor note');
+  // An objection raised in round 1 that nobody ruled on, and round 2 did not raise again, was withdrawn.
+  const dropped = replay([
+    { n: 1, engineer: { reply: objections('Unclear claim'), openObjections: 1 } },
+    { n: 2, engineer: { reply: objections('FR numbering is off'), openObjections: 1 }, tiebreak: ruled('MINOR') }
+  ]);
+  assert.equal(lib.reviewVerdict(dropped).verdict, 'PASS');
+  assert.equal(lib.topObjections(dropped, 5).find(o => /Unclear/.test(o.headline)).state, 'resolved');
+});
+
+test('the Chief Engineer ends with nothing open: advisory concerns alone pass, a REQUIRED one or a RETHINK does not', () => {
+  const ship = { reply: 'VERDICT: SHIP IT\nOPEN OBJECTIONS: 0', openObjections: 0 };
+  const advisory = replay([{ n: 1, engineer: ship, architect: { reply: '', verdict: 'SIGN-OFF WITH CONCERNS', concerns: [{ type: 'ADVISORY', description: 'Add a changelog line.' }] } }]);
+  assert.deepEqual([lib.reviewVerdict(advisory).verdict, lib.reviewVerdict(advisory).summary], ['PASS', 'no blocking objection; 1 minor note']);
+  const required = replay([{ n: 1, engineer: ship, architect: { reply: '', verdict: 'SIGN-OFF WITH CONCERNS', concerns: [{ type: 'REQUIRED', description: 'The migration has no rollback.' }] } }]);
+  assert.equal(lib.reviewVerdict(required).verdict, 'CHANGES REQUESTED');
+  const rethink = replay([{ n: 1, engineer: ship, architect: { reply: '', verdict: 'RETHINK', concerns: [] } }]);
+  assert.equal(lib.reviewVerdict(rethink).verdict, 'CHANGES REQUESTED');
+  assert.equal(lib.reviewVerdict(replay([{ n: 1, engineer: ship }], 'AWAITING_APPROVAL')).summary, 'every seat signed off');
+});
+
+test('the Action turns the two-word verdict into one output value', () => {
+  const yml = fs.readFileSync(path.join(__dirname, '..', 'action.yml'), 'utf8');
+  const sed = /outcome=\$\(sed -n '([^']+)'/.exec(yml)[1];
+  const md = 'Outcome: **CHANGES REQUESTED** after 2 rounds: 1 objection stands (quick profile, base `abc1234`).\n';
+  const r = spawnSync('bash', ['-c', `outcome=$(printf %s "$MD" | sed -n '${sed}' | head -n1); outcome=\${outcome// /_}; echo "$outcome"`], { env: { ...process.env, MD: md }, encoding: 'utf8' });
+  assert.equal(r.stdout.trim(), 'CHANGES_REQUESTED');
+  assert.match(yml, /outcome=\$\{outcome\/\/ \/_\}/);
+});
+
+test('login: Claude Code\'s own login lines count wherever it prints them; other words about logins count only on stderr', () => {
+  const kind = (e) => lib.describeSeatError(e).kind;
+  // Claude Code prints its login failures on stdout.
+  assert.equal(kind({ stdout: 'Failed to authenticate. API Error: 401 OAuth access token is invalid.', exitCode: 1 }), 'login');
+  // A model's answer on stdout that talks about 401s or logins is not the CLI's own login failing.
+  assert.notEqual(kind({ stdout: 'The handler returns 401 unauthorized when the session has expired.', exitCode: 1 }), 'login');
+  assert.notEqual(kind({ stdout: 'Users must sign in again after the token expired.', exitCode: 1 }), 'login');
+  // On stderr, where no model text goes, they do count.
+  assert.equal(kind({ stderr: 'Error: 403 permission denied', exitCode: 1 }), 'login');
+  assert.equal(kind({ stderr: 'You are not signed in. Please sign in again.', exitCode: 1 }), 'login');
+});

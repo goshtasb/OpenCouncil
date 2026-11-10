@@ -70,14 +70,14 @@ export function describeSeatError(err: any): { kind: SeatErrorKind; reason: stri
   if (err?.timedOut) return { kind: 'timeout', reason: 'timed out' };
   if (/\b429\b|quota|rate.?limit|resource.?exhausted|usage limit|limit reached|out of credits/i.test(text)) return { kind: 'quota', reason: `hit its usage limit${tail ? ` (${tail})` : ''}` };
   if (/max(imum)?[ _-]?turns/i.test(text)) return { kind: 'max-turns', reason: `stopped at its turn limit${tail ? ` (${tail})` : ''}` };
-  // Only phrases a CLI prints about its own login, so a model's text about login code does not drop the whole provider.
-  // Claude Code prints its login errors on stdout, so its exact phrases count anywhere. The generic ones other CLIs use
-  // ("please log in", "session expired", a 403) count only on stderr or in the error message, where no model text goes.
-  // execa's message repeats stdout, so take its shortMessage (the exit line alone) when there is one.
+  // Only what a CLI prints about its own login counts, so a model's text about login code never drops the provider.
+  // stdout can hold model text, so it counts only for Claude Code's own login lines (Claude prints them on stdout).
+  // Everything else, a bare 401 or 403 included, counts only on stderr or execa's exit line, where no model text goes.
+  // execa's message repeats stdout, so the exit line is its shortMessage when there is one.
   const exitLine = typeof err?.shortMessage === 'string' ? err.shortMessage.split(err.command || '\u0000').join('<command>') : message;
   const errText = `${typeof err?.stderr === 'string' ? err.stderr : ''}\n${exitLine}`;
-  if (/not (logged|signed) in|please (run )?\/?login|run \/login|(log|sign) in again|unauthori[sz]ed|authentication (failed|error|required)|failed to authenticate|invalid (api key|x-api-key|token)|token (has )?expired|\b401\b/i.test(text)
-    || /please (log|sign) ?in|(session|credentials?|login) (has |have )?expired|permission[_ ]denied|\b403\b|authenticat/i.test(errText)) return { kind: 'login', reason: `is not signed in${tail ? ` (${tail})` : ''}` };
+  if (/invalid api key|please run \/login|failed to authenticate|oauth (access )?token (is invalid|has expired)|invalid bearer token|not logged in/i.test(text)
+    || /not (logged|signed) in|please (log|sign) ?in|(log|sign) in again|unauthori[sz]ed|authenticat|invalid (x-api-key|token)|(token|session|credentials?|login) (has |have )?expired|permission[_ ]denied|\b40[13]\b/i.test(errText)) return { kind: 'login', reason: `is not signed in${tail ? ` (${tail})` : ''}` };
   return { kind: 'error', reason: tail ? `failed: ${tail}` : `exited with code ${err?.exitCode ?? 'unknown'}` };
 }
 

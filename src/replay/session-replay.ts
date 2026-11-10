@@ -231,5 +231,31 @@ export interface TopObjection {
   evidence: string;
   location?: string;
   /** The Chief Architect's ruling on a Chief Engineer objection, when it arbitrated that round. */
-  ruling?: 'STANDS' | 'MEASURE';
+  ruling?: 'STANDS' | 'MEASURE' | 'MINOR';
+  /** blocking: holds up the change. minor: right, but it does not. resolved: raised earlier and settled since. */
+  state?: 'blocking' | 'minor' | 'resolved';
+}
+
+/**
+ * What a review comes to, from the Chief Architect's rulings rather than from the PRD sign-off: PASS when nothing that
+ * blocks is left (minor notes may be), CHANGES REQUESTED when an objection stands, needs a measurement or was never ruled on.
+ */
+export interface ReviewVerdict {
+  verdict: 'PASS' | 'CHANGES REQUESTED' | 'NO VERDICT';
+  /** Objections the Chief Architect upheld as blocking. */
+  stands: number;
+  /** Objections the Chief Architect said need a measurement before anyone can tell. */
+  measure: number;
+  /** Objections still open at the end that nobody ruled on. */
+  unruled: number;
+  /** Concerns the Chief Architect itself marked REQUIRED. */
+  required: number;
+  /** Right but not blocking: MINOR rulings and the Chief Architect's advisory concerns. */
+  minor: number;
+  /** Objections the Chief Architect overruled in the last round. */
+  overruled: number;
+  /** Every seat signed off the PRD as well. */
+  signedOff: boolean;
+  /** One clause: "no blocking objection; 2 minor notes" or "2 objections stand, 1 to verify". */
+  summary: string;
 }

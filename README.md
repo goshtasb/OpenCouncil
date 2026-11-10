@@ -70,8 +70,8 @@ The review then runs with whatever is ready. With Claude alone, the seats run on
 
 1. It works out what to review. With no arguments, that is your uncommitted change, untracked files included. With nothing uncommitted, it is your branch's commits since `origin/main` (or `main`/`master`). Pass `--base <ref>` to pick the base yourself, or a sentence to review a plan instead of a diff.
 2. It prints every file whose diff the seats will see, before they start. Untracked files that look like secrets (`.env*`, `*.pem`, `*.key`, `id_rsa` and the like) are never sent, and it names the ones it held back.
-3. Three seats review it. The **Lead PM** writes down what the change claims to do. The **Chief Engineer** checks every claim against your code and objects with `file:line`. The **Chief Architect** rules on each objection, upheld or overruled. With `--debate`, the Lead revises and the seats go back and forth until the Architect signs off or the round budget runs out. The seats read your project from a temporary checkout that is removed when the review ends.
-4. It prints the strongest objections and a line you can paste anywhere, and writes two files: `review.html`, one self-contained page, and `review.md`, ready for a gist or a pull request comment. The page opens in your browser when you run it in a terminal.
+3. Three seats review it. The **Lead PM** writes down what the change claims to do. The **Chief Engineer** checks every claim against your code and objects with `file:line`. The **Chief Architect** rules on each objection: it stands (a defect that should block), it is minor (right, but it should not block), it needs a measurement, or it is overruled. With `--debate`, the Lead revises and the seats go back and forth, and the Architect rules again at the end. The seats read your project from a temporary checkout that is removed when the review ends.
+4. It prints the verdict, the strongest objections and a line you can paste anywhere. The verdict is **PASS** when nothing that blocks is left (minor notes may be), and **CHANGES REQUESTED** when an objection stands, needs a measurement, or was never ruled on. Blocking objections come first; minor notes are listed after them and say they don't block. It also writes two files: `review.html`, one self-contained page, and `review.md`, ready for a gist or a pull request comment. The page opens in your browser when you run it in a terminal.
 
 If a seat fails halfway (a usage limit, a lost login, a turn limit, an error), it moves to another model or AI for the rest of the review: Claude's opus falls back to sonnet first, and a lost login drops that AI. A seat only moves to an AI already on the Seats line. With a `.council/config.yml`, that means one its seats name; list others under `council.failover_providers` to allow them. If none is left for the Chief Architect, the review still finishes without its rulings. Either way the review keeps going and lists the gap under **Gaps in this review**, instead of failing the whole run.
 
@@ -139,6 +139,8 @@ jobs:
 | `anthropic_api_key` | | Your own Anthropic API key; used ahead of the plan token when both are set |
 | `rounds` | `2` | Round budget, 2 to 4 |
 | `github_token` | `github.token` | Posts the comment; needs `pull-requests: write` |
+
+The `outcome` output is `PASS`, `CHANGES_REQUESTED`, `NO_VERDICT` (no seat reviewed the change) or `SKIPPED`.
 
 It skips, with a notice and a green check, pull requests from forks (GitHub gives them no secrets), drafts, and runs with no login. The seats run in Claude Code's read-only plan mode on the runner, and the full replay is kept as the `open-council-review` artifact and in the run summary. Each review uses about four minutes of your plan or your key.
 

@@ -42,7 +42,9 @@ test('quick review (the default): one call per seat, and the Chief Architect rul
   assert.equal(result.top[0].ruling, 'STANDS');
   assert.equal(result.top[0].location, 'src/retry.js:12');
   const { outcomeLine } = require('../dist/commands/review.js');
-  assert.equal(outcomeLine(result, '40 s', false), 'After 1 round the Chief Engineer had 2 open objections; the Chief Architect ruled 1 upheld, 1 overruled (40 s).');
+  assert.equal(result.verdict.verdict, 'CHANGES REQUESTED');
+  assert.equal(outcomeLine(result, '40 s', false), 'CHANGES REQUESTED after 1 round (40 s): 1 objection stands; the Chief Architect overruled 1 objection.');
+  assert.match(fs.readFileSync(result.mdPath, 'utf8'), /^Outcome: \*\*CHANGES REQUESTED\*\* after 1 round: 1 objection stands/m);
   const md = fs.readFileSync(result.mdPath, 'utf8');
   assert.match(md, /_Chief Engineer, round 1; upheld by the Chief Architect_/);
   assert.match(md, /<summary>Chief Architect's rulings on round 1: 1 upheld, 1 overruled<\/summary>/);
@@ -168,6 +170,7 @@ test('the share line names the vendors that answered, and says so plainly when t
   assert.doesNotMatch(line, /Gemini|Grok|three AI/);
   assert.match(lib.seatSummary(solo).lineup, /^Claude only \(single vendor\): Lead PM sonnet, Chief Engineer opus, Chief Architect sonnet\.$/);
   const two = replayWith([{ seat: 'lead_pm', provider: 'claude-code', model: 'sonnet' }, { seat: 'chief_engineer', provider: 'claude-code', model: 'opus' }, { seat: 'chief_architect', provider: 'grok-cli', model: 'grok-4.6' }]);
+  two.rounds[0].engineer.openObjections = 0;
   assert.match(lib.shareLine(two, []), /^Claude and Grok reviewed my change and found nothing/);
 });
 
@@ -194,7 +197,7 @@ test('the default review is quick: one round, final arbitration, no revision rou
   const debate = await lib.reviewConfig(repo, lib.REVIEW_DEBATE_ROUNDS, new Set(['claude-code']));
   assert.equal(debate.config.council.max_rounds, 2);
   assert.equal(debate.config.council.signoff_revisions, 1);
-  assert.equal(debate.config.council.final_arbitration, false);
+  assert.equal(debate.config.council.final_arbitration, true, 'a debate also ends on the Architect\'s rulings');
 });
 
 test('a project config whose seat is not ready gets a ready provider for this review, and the file is untouched', async () => {
@@ -264,7 +267,9 @@ test('when the Chief Architect overrules every objection, the review says none s
   const result = await lib.runReview(ctx.repo, { config: ctx.config, sessions: ctx.sessions, pipeline: ctx.pipeline });
   assert.equal(result.top.length, 0);
   const md = fs.readFileSync(result.mdPath, 'utf8');
-  assert.match(md, /Outcome: \*\*STALLED\*\* after 1 round: no objection stands \(the Chief Architect overruled all 2\), but nothing was signed off/);
+  assert.equal(result.verdict.verdict, 'PASS', 'nothing blocking is left, so the review passes');
+  assert.match(md, /Outcome: \*\*PASS\*\* after 1 round: no blocking objection; the Chief Architect overruled 2 objections/);
+  assert.doesNotMatch(md, /STALLED/);
   assert.match(md, /The Chief Engineer raised 2 objections and the Chief Architect overruled every one, so none stands\./);
   assert.doesNotMatch(md, /raised no objections|would not ship as is/);
   assert.match(result.share, /the Chief Engineer objected 2 times and the Chief Architect overruled every one/);
@@ -358,7 +363,7 @@ test('npx open-council-cli review with only Claude signed in: a labelled single-
   assert.equal(r.status, 0, r.stderr + r.stdout);
   assert.match(r.stdout, /Seats: Claude only \(single vendor\): Lead PM sonnet, Chief Engineer opus, Chief Architect sonnet\./);
   assert.match(r.stdout, /Quick review: one round, one call per seat\./);
-  assert.match(r.stdout, /the Chief Architect ruled 1 upheld, 1 overruled/);
+  assert.match(r.stdout, /CHANGES REQUESTED after 1 round \([^)]*all on one vendor\): 1 objection stands/);
   assert.match(r.stdout, /I had three Claude seats \(sonnet and opus\) review my change/);
   assert.deepEqual(fs.readFileSync(path.join(dir, 'calls.log'), 'utf8').trim().split('\n'), ['haiku', 'sonnet', 'opus', 'sonnet'], 'the check, then one call per seat');
   const md = fs.readFileSync(path.join(out, 'review.md'), 'utf8');
@@ -436,9 +441,9 @@ test('a model reply that talks about login code is not read as a lost login', ()
   assert.notEqual(lib.describeSeatError({ exitCode: 1, stdout: model, shortMessage: 'Command failed with exit code 1: agy -p x', message: `Command failed with exit code 1: agy -p x\n\n${model}`, command: 'agy -p x' }).kind, 'login', 'execa repeats stdout in message; that is not the CLI speaking');
 });
 
-test('the Action maps a seat that is not signed in to its "Claude rejected the login" error (the grep in action.yml, run as written)', () => {
+test('the Action maps a seat that is not signed in to its "rejected the login" error (the grep in action.yml, run as written)', () => {
   const yml = fs.readFileSync(path.join(__dirname, '..', 'action.yml'), 'utf8');
-  const m = yml.match(/if grep -qiE '([^']+)' "\$OUT\.log"; then\n\s*echo "::error title=Open Council::Claude rejected the login/);
+  const m = yml.match(/if grep -qiE '([^']+)' "\$OUT\.log"; then\n\s*echo "::error title=Open Council::A seat rejected the login/);
   assert.ok(m, 'action.yml still greps the review log for a rejected login');
   const reason = lib.describeSeatError({ exitCode: 1, stdout: 'Invalid API key · Please run /login' }).reason;
   const failure = { seat: 'lead_pm', provider: 'claude-code', model: 'sonnet', stage: 'draft v1', kind: 'login', reason, at: '' };

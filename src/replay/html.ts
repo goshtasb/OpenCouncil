@@ -1,6 +1,6 @@
-import { SessionReplay, TopObjection } from './session-replay.js';
+import { ReviewVerdict, SessionReplay, TopObjection } from './session-replay.js';
 import { escapeHtml, renderMarkdown } from './markdown.js';
-import { SeatLines, allOverruled, nothingFoundText, rulingCounts } from './markdown-replay.js';
+import { SeatLines, allOverruled, nothingFoundText, rulingCounts, rulingNote } from './markdown-replay.js';
 
 const SEATS = {
   pm: { name: 'Lead PM', cls: 'pm' },
@@ -51,19 +51,22 @@ footer{margin-top:48px;color:var(--muted);font-size:14px}a{color:var(--eng)}
 `;
 
 /** One self-contained HTML page for a session: no scripts, no external requests, every seat reply rendered from its file. */
-export function renderReplayHtml(r: SessionReplay, options: { note?: string; top?: TopObjection[]; share?: string; seats?: SeatLines } = {}): string {
-  const outcomeClass = r.status === 'DONE' || r.status === 'MERGED' ? 'ok' : r.status === 'BLOCKED' || r.status === 'STALLED' ? 'bad' : 'warn';
+export function renderReplayHtml(r: SessionReplay, options: { note?: string; top?: TopObjection[]; share?: string; seats?: SeatLines; verdict?: ReviewVerdict } = {}): string {
+  const v = options.verdict;
+  const outcomeClass = v ? (v.verdict === 'PASS' ? 'ok' : v.verdict === 'CHANGES REQUESTED' ? 'bad' : 'warn')
+    : r.status === 'DONE' || r.status === 'MERGED' ? 'ok' : r.status === 'BLOCKED' || r.status === 'STALLED' ? 'bad' : 'warn';
   const parts: string[] = [];
   parts.push(`<h1>Council replay: ${escapeHtml(r.slug)}</h1>`);
   parts.push(`<p class="lede">Session <code>${escapeHtml(r.id)}</code>, ${escapeHtml(r.profile)} profile, base commit <code>${escapeHtml(r.baseSha.slice(0, 7))}</code>, ` +
     `round budget ${r.maxRounds}${r.signoffRevisions ? ` plus ${r.signoffRevisions} sign-off revision` : ''}.</p>`);
-  parts.push(`<span class="outcome ${outcomeClass}">Outcome: ${escapeHtml(r.status)}</span>`);
+  parts.push(`<span class="outcome ${outcomeClass}">Outcome: ${escapeHtml(v ? v.verdict : r.status)}</span>`);
+  if (v) parts.push(`<p class="lede">${escapeHtml(v.summary[0].toUpperCase() + v.summary.slice(1))}.</p>`);
   if (options.seats?.lineup) parts.push(`<p class="lede"><strong>Seats:</strong> ${escapeHtml(options.seats.lineup)}</p>`);
   if (options.seats?.gaps.length) parts.push(seatBlock('harness', 'gaps in this review', `<ul>${options.seats.gaps.map(g => `<li>${escapeHtml(g)}</li>`).join('')}</ul>`));
   if (options.note) parts.push(`<div class="md">${renderMarkdown(options.note)}</div>`);
   if (options.top && options.top.length) {
     parts.push('<h2>What the council found</h2>' + options.top.map((o, i) =>
-      seatBlock(o.seat === 'Chief Engineer' ? 'eng' : 'arch', `objection ${i + 1}, round ${o.round}${o.location ? ` · ${o.location}` : ''}${o.ruling === 'STANDS' ? ' · upheld by the Chief Architect' : o.ruling === 'MEASURE' ? ' · to measure' : ''}`,
+      seatBlock(o.seat === 'Chief Engineer' ? 'eng' : 'arch', `objection ${i + 1}, round ${o.round}${o.location ? ` · ${o.location}` : ''}${rulingNote(o) ? ` · ${rulingNote(o)}` : ''}`,
         `<p><strong>${renderInline(o.headline)}</strong></p>${o.evidence && o.evidence !== o.headline ? `<p>${renderInline(o.evidence)}</p>` : ''}`)).join(''));
   } else if (options.top && allOverruled(r)) {
     parts.push(`<h2>What the council found</h2><p>${escapeHtml(nothingFoundText(r))}</p>`);
@@ -105,7 +108,7 @@ export function renderReplayHtml(r: SessionReplay, options: { note?: string; top
       fold('Final PRD (full text)', `<div class="md">${renderMarkdown(r.prd.text)}</div>`));
   }
   if (r.stalled) {
-    parts.push('<h2>Stalled: what the harness kept</h2><p>No document reached the operator. The harness saved the last draft and the open objections instead.</p>' +
+    parts.push((v ? '<h2>The last draft and the objections still open</h2>' : '<h2>Stalled: what the harness kept</h2><p>No document reached the operator. The harness saved the last draft and the open objections instead.</p>') +
       fold('stalled-draft-and-objections.md', `<div class="md">${renderMarkdown(r.stalled)}</div>`));
   }
   if (r.verification) {

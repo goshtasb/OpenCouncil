@@ -1,4 +1,4 @@
-import { SessionReplay, TopObjection } from './session-replay.js';
+import { ReviewVerdict, SessionReplay, TopObjection } from './session-replay.js';
 
 const quote = (text: string) => text.trim().split('\n').map(l => (l.trim() ? `> ${l}` : '>')).join('\n');
 
@@ -26,14 +26,24 @@ export function nothingFoundText(r: Pick<SessionReplay, 'rounds'>): string {
   return n ? `The Chief Engineer raised ${n} objection${n === 1 ? '' : 's'} and the Chief Architect overruled ${n === 1 ? 'it' : 'every one'}, so none stands.` : 'The council raised no objections.';
 }
 
-export function renderReplayMarkdown(r: SessionReplay, options: { top?: TopObjection[]; share?: string; replayUrl?: string; rounds?: boolean; seats?: SeatLines } = {}): string {
+/** How a found-list entry says what the Chief Architect made of it. */
+export function rulingNote(o: TopObjection): string {
+  if (o.state === 'minor') return o.seat === 'Chief Architect' ? 'advisory, does not block' : 'the Chief Architect ruled it minor: right, but it does not block';
+  if (o.state === 'resolved') return 'settled in a later round';
+  return o.ruling === 'STANDS' ? 'upheld by the Chief Architect' : o.ruling === 'MEASURE' ? 'the Chief Architect asked for a measurement' : '';
+}
+
+export function renderReplayMarkdown(r: SessionReplay, options: { top?: TopObjection[]; share?: string; replayUrl?: string; rounds?: boolean; seats?: SeatLines; verdict?: ReviewVerdict } = {}): string {
   const out: string[] = [];
   out.push(`## Council review: ${r.slug}`, '');
   const rounds = r.rounds.filter(x => x.engineer).length;
   // Only when nothing made the found list: in a debate, an earlier round's upheld objection still stands.
   const overruled = options.top && options.top.length ? 0 : allOverruled(r);
   const meaning = r.status === 'STALLED' && overruled ? `: no objection stands (the Chief Architect overruled ${overruled === 1 ? 'the only one' : `all ${overruled}`}), but nothing was signed off` : r.status === 'STALLED' ? ': the seats did not all sign off, so it would not ship as is' : r.status === 'AWAITING_APPROVAL' || r.status === 'APPROVED' ? ': all three seats signed off' : '';
-  out.push(`Outcome: **${r.status}** after ${rounds} round${rounds === 1 ? '' : 's'}${meaning} (${r.profile} profile, base \`${r.baseSha.slice(0, 7)}\`).`, '');
+  const v = options.verdict;
+  out.push(v
+    ? `Outcome: **${v.verdict}** after ${rounds} round${rounds === 1 ? '' : 's'}: ${v.summary} (${r.profile} profile, base \`${r.baseSha.slice(0, 7)}\`).`
+    : `Outcome: **${r.status}** after ${rounds} round${rounds === 1 ? '' : 's'}${meaning} (${r.profile} profile, base \`${r.baseSha.slice(0, 7)}\`).`, '');
   if (options.seats?.lineup) out.push(`Seats: ${options.seats.lineup}`, '');
   if (options.seats?.gaps.length) {
     out.push('**Gaps in this review:**', '');
@@ -45,7 +55,8 @@ export function renderReplayMarkdown(r: SessionReplay, options: { top?: TopObjec
     options.top.forEach((o, i) => {
       out.push(`${i + 1}. **${o.headline.replace(/\*\*/g, '')}**${o.location ? ` (\`${o.location}\`)` : ''}  `);
       if (o.evidence && o.evidence !== o.headline) out.push(`   ${o.evidence.replace(/\n+/g, ' ')}`);
-      out.push(`   _${o.seat}, round ${o.round}${o.ruling === 'STANDS' ? '; upheld by the Chief Architect' : o.ruling === 'MEASURE' ? '; the Chief Architect asked for a measurement' : ''}_`, '');
+      const note = rulingNote(o);
+      out.push(`   _${o.seat}, round ${o.round}${note ? `; ${note}` : ''}_`, '');
     });
   } else {
     out.push(nothingFoundText(r), '');
@@ -63,7 +74,7 @@ export function renderReplayMarkdown(r: SessionReplay, options: { top?: TopObjec
       if (round.signoff) out.push(details(`Lead PM sign-off on v${round.n}: ${round.signoff.verdict || ''}`, round.signoff.reply, 'markdown'));
     }
     if (r.prd) out.push(details('The PRD all three seats signed off', r.prd.text, 'markdown'));
-    if (r.stalled) out.push(details('Stalled: last draft and open objections', r.stalled, 'markdown'));
+    if (r.stalled) out.push(details(v ? 'The last draft and the objections still open' : 'Stalled: last draft and open objections', r.stalled, 'markdown'));
     out.push('', '<details><summary>The task</summary>', '', quote(r.task), '', '</details>', '');
   }
   if (options.share) out.push(`> ${options.share}`, '');
@@ -74,7 +85,7 @@ export function renderReplayMarkdown(r: SessionReplay, options: { top?: TopObjec
 /** "2 upheld, 1 overruled" from a round's rulings. */
 export function rulingCounts(rulings: Array<{ ruling: string }>): string {
   const n = (r: string) => rulings.filter(x => x.ruling === r).length;
-  const parts = [[n('STANDS'), 'upheld'], [n('OVERRULED'), 'overruled'], [n('MEASURE'), 'to measure']].filter(([c]) => c).map(([c, w]) => `${c} ${w}`);
+  const parts = [[n('STANDS'), 'upheld'], [n('MINOR'), 'minor'], [n('OVERRULED'), 'overruled'], [n('MEASURE'), 'to measure']].filter(([c]) => c).map(([c, w]) => `${c} ${w}`);
   return parts.join(', ') || 'no parseable rulings';
 }
 
@@ -87,7 +98,7 @@ export const PR_COMMENT_MAX_CHARS = 60_000;
  * The review as one pull request comment: the marker, what the council found, a link to the full replay,
  * and every round folded when it fits. When it does not fit, the rounds are left to the replay.
  */
-export function renderPrComment(r: SessionReplay, options: { top?: TopObjection[]; share?: string; replayUrl?: string; maxChars?: number; seats?: SeatLines } = {}): string {
+export function renderPrComment(r: SessionReplay, options: { top?: TopObjection[]; share?: string; replayUrl?: string; maxChars?: number; seats?: SeatLines; verdict?: ReviewVerdict } = {}): string {
   const max = options.maxChars ?? PR_COMMENT_MAX_CHARS;
   const full = `${PR_COMMENT_MARKER}\n${renderReplayMarkdown(r, options)}`;
   if (full.length <= max) return full;
