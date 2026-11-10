@@ -387,9 +387,12 @@ export function reviewVerdict(replay: SessionReplay): ReviewVerdict {
   const reviewed = replay.rounds.some(r => r.engineer);
   // The Chief Engineer's own last word blocks too, whatever its objection count: a RETHINK says the change should not
   // ship, and a question it left for the Chief Architect is a doubt nobody settled.
-  const lastEngineer = [...replay.rounds].reverse().find(r => r.engineer)?.engineer;
+  // A question the Chief Architect answered (its ruling for that round is in architect-rulings.json) is settled.
+  const lastRound = [...replay.rounds].reverse().find(r => r.engineer);
+  const lastEngineer = lastRound?.engineer;
   const engineerRethink = !signedOff && /RETHINK/i.test(lastEngineer?.verdict || '');
-  const questions = signedOff || !lastEngineer ? 0 : extractArchitectQuestions(lastEngineer.reply).length;
+  const answered = (replay.rulings || []).filter(r => r.askedBy === 'chief_engineer' && r.stage === `round ${lastRound?.n}` && r.ruling.trim()).length;
+  const questions = signedOff || !lastEngineer ? 0 : Math.max(0, extractArchitectQuestions(lastEngineer.reply).length - answered);
   const blocking = stands + measure + required + unruled + questions + (engineerRethink ? 1 : 0);
   const notes = minor ? plural(minor, 'minor note') : '';
   let verdict: ReviewVerdict['verdict'];

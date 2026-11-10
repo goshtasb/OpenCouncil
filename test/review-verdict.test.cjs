@@ -273,3 +273,13 @@ test('the found list does not print an objection\'s location twice', () => {
   assert.equal(found.split('src/a.js:9').length - 1, 1, found);
   assert.match(md, /The loop has no cap\./);
 });
+
+test('a question the Chief Architect already answered does not block', () => {
+  const rounds = [{ n: 1, engineer: { reply: 'VERDICT: SHIP IT\nOPEN OBJECTIONS: 0\nQUESTION FOR ARCHITECT: Is a retry allowed here?', verdict: 'SHIP IT', openObjections: 0 } }];
+  const answered = { ...replay(rounds), rulings: [{ id: 1, askedBy: 'chief_engineer', stage: 'round 1', question: 'Is a retry allowed here?', ruling: 'Yes, once.' }] };
+  assert.equal(lib.reviewVerdict(answered).verdict, 'PASS');
+  assert.equal(lib.reviewVerdict(answered).questions, 0);
+  // An answer to another round's or another seat's question does not settle this one.
+  const elsewhere = { ...replay(rounds), rulings: [{ id: 1, askedBy: 'lead_pm', stage: 'round 1', question: 'q', ruling: 'a' }, { id: 2, askedBy: 'chief_engineer', stage: 'round 2', question: 'q', ruling: 'a' }] };
+  assert.equal(lib.reviewVerdict(elsewhere).questions, 1);
+});
