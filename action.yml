@@ -109,7 +109,7 @@ runs:
         status=${PIPESTATUS[0]}
         set -e
         if [ "$status" -ne 0 ]; then
-          if grep -qiE 'Failed to authenticate|\b401\b|invalid x-api-key|token is invalid|not logged in' "$OUT.log"; then
+          if grep -qiE 'Failed to authenticate|\b401\b|invalid x-api-key|token is invalid|not logged in|is not signed in' "$OUT.log"; then
             echo "::error title=Open Council::Claude rejected the login. Make a new token with \`claude setup-token\` (or check the API key) and set the repository secret again."
           else
             echo "::error title=Open Council::The review did not finish. The last lines of its output are in this step's log."

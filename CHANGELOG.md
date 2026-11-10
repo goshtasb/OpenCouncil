@@ -17,7 +17,7 @@ A first review on any setup: it checks which AIs are ready, runs with those, and
 ### Changed
 - `council review` runs one quick round by default: the Lead PM's brief, the Chief Engineer's objections, and the Chief Architect's ruling on each. `--debate` runs the earlier two-round debate. `--rounds` now takes 1 to 4.
 - A seat in `.council/config.yml` whose AI is not ready moves to a ready one for that review only; the file is not changed.
-- The GitHub Action still passes `--rounds 2`, so it keeps the two-round debate. It skips the setup check (`--no-check`), because it checks its own login, but a seat that fails mid-run now falls back to another Claude model and the comment lists the gap.
+- The GitHub Action still passes `--rounds 2`, so it keeps the two-round debate. It skips the setup check (`--no-check`): a rejected token still ends the run with the Action's own "Claude rejected the login" error, now also when the seat's failure is reported as "is not signed in". But a seat that fails mid-run now falls back to another Claude model and the comment lists the gap.
 
 ## [0.3.2] — 2026-11-08
 

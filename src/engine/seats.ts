@@ -123,7 +123,10 @@ export function isDropped(record: Pick<SeatsRecord, 'failures'>, provider: strin
  * registry, and able to run with no tools when the call needs none (the Chief Architect judges only the text it is given).
  */
 function nextProvider(config: CouncilConfig, seat: SeatName, record: SeatsRecord, needsNoTools: boolean, defaults: Record<string, string>): SeatAssignment | null {
-  for (const provider of config.council.failover_providers || []) {
+  // The seat's own provider comes first, so a Claude seat tries its other model before leaving Claude.
+  const list = config.council.failover_providers || [];
+  const current = config.seats[seat].provider;
+  for (const provider of list.includes(current) ? [current, ...list.filter(p => p !== current)] : list) {
     let adapter;
     try { adapter = getAdapter(provider); } catch { continue; }
     if (needsNoTools && adapter.canDisableTools === false) continue;

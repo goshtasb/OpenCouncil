@@ -30,7 +30,8 @@ export function renderReplayMarkdown(r: SessionReplay, options: { top?: TopObjec
   const out: string[] = [];
   out.push(`## Council review: ${r.slug}`, '');
   const rounds = r.rounds.filter(x => x.engineer).length;
-  const overruled = allOverruled(r);
+  // Only when nothing made the found list: in a debate, an earlier round's upheld objection still stands.
+  const overruled = options.top && options.top.length ? 0 : allOverruled(r);
   const meaning = r.status === 'STALLED' && overruled ? `: no objection stands (the Chief Architect overruled ${overruled === 1 ? 'the only one' : `all ${overruled}`}), but nothing was signed off` : r.status === 'STALLED' ? ': the seats did not all sign off, so it would not ship as is' : r.status === 'AWAITING_APPROVAL' || r.status === 'APPROVED' ? ': all three seats signed off' : '';
   out.push(`Outcome: **${r.status}** after ${rounds} round${rounds === 1 ? '' : 's'}${meaning} (${r.profile} profile, base \`${r.baseSha.slice(0, 7)}\`).`, '');
   if (options.seats?.lineup) out.push(`Seats: ${options.seats.lineup}`, '');

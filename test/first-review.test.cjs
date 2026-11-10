@@ -362,3 +362,41 @@ test('npx open-council-cli review with only Claude signed in: a labelled single-
   assert.match(md, /^Seats: Claude only \(single vendor\)/m);
   assert.doesNotMatch(md, /Gemini|Grok/);
 });
+
+test('a Claude Engineer that hits its opus limit moves to sonnet before any other listed AI', async () => {
+  const ctx = quick();
+  const other = new ScriptedAdapter('fake-listed-first', [TWO_OBJECTIONS]);
+  lib.registerAdapter(other.name, other);
+  const claude = {
+    name: 'claude-code', canDisableTools: true, calls: [],
+    async isAvailable() { return true; },
+    async runPrompt(prompt, options) {
+      this.calls.push(options.model);
+      if (options.model === 'opus') throw Object.assign(new Error('Command failed'), { exitCode: 1, stderr: 'Claude usage limit reached for Opus' });
+      return TWO_OBJECTIONS;
+    }
+  };
+  lib.registerAdapter('claude-code', claude);
+  ctx.config.seats.chief_engineer = { ...ctx.config.seats.chief_engineer, provider: 'claude-code', model: 'opus' };
+  ctx.config.council.failover_providers = [other.name, 'claude-code'];
+  fs.writeFileSync(path.join(ctx.repo, 'retry.js'), 'x\n');
+  ctx.adapters.pm.responses.push(PLAN(1));
+  ctx.adapters.arch.responses.push(RULINGS);
+  const result = await lib.runReview(ctx.repo, { config: ctx.config, sessions: ctx.sessions, pipeline: ctx.pipeline });
+  assert.deepEqual(claude.calls, ['opus', 'sonnet']);
+  assert.equal(other.calls.length, 0, 'the other AI is not reached while Claude has a model left');
+  assert.deepEqual(ctx.config.seats.chief_engineer, { ...ctx.config.seats.chief_engineer, provider: 'claude-code', model: 'sonnet' });
+  assert.match(result.seats.gaps[0], /^Chief Engineer on Claude \(opus\) hit its usage limit/);
+});
+
+test('in a debate, "no objection stands" is only said when nothing made the found list', () => {
+  const replay = { slug: 's', status: 'STALLED', profile: 'quick', baseSha: 'abcdef1234', task: 't', rounds: [
+    { n: 1, engineer: { reply: 'x', verdict: 'SHIP WITH CHANGES' }, tiebreak: { reply: 'r', rulings: [{ n: 1, ruling: 'STANDS' }] } },
+    { n: 2, engineer: { reply: 'y', verdict: 'SHIP WITH CHANGES' }, tiebreak: { reply: 'r', rulings: [{ n: 1, ruling: 'OVERRULED' }] } }
+  ] };
+  const top = [{ round: 1, seat: 'Chief Engineer', headline: 'Upheld in round 1', ruling: 'STANDS' }];
+  const md = lib.renderReplayMarkdown(replay, { top, rounds: false });
+  assert.match(md, /would not ship as is/);
+  assert.doesNotMatch(md, /no objection stands/);
+  assert.match(lib.renderReplayMarkdown(replay, { top: [], rounds: false }), /no objection stands \(the Chief Architect overruled the only one\)/);
+});
