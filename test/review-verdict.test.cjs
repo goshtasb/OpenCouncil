@@ -177,3 +177,10 @@ test('a declared objection the parser could not read still blocks when the other
   const v = lib.reviewVerdict(r);
   assert.deepEqual([v.verdict, v.summary], ['CHANGES REQUESTED', '1 objection nobody ruled on; 1 minor note']);
 });
+
+test('two blocking objections at one file:line in the same round are both counted', () => {
+  const reply = ['OPEN OBJECTIONS: 2', '', '1. **Retries 4xx (src/a.js:9).** x', '2. **Leaks the timer (src/a.js:9).** y'].join('\n');
+  const r = replay([{ n: 1, engineer: { reply, openObjections: 2 }, tiebreak: ruled('STANDS', 'STANDS') }]);
+  assert.equal(lib.reviewVerdict(r).stands, 2);
+  assert.equal(lib.topObjections(r, 5).length, 2);
+});

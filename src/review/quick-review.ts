@@ -257,7 +257,7 @@ const asRuling = (r?: string): Ruling | undefined => {
  * - resolved: never upheld, and settled since: the Chief Engineer did not raise it again, ended with no open objection,
  *   or every seat signed off. Shown, never counted.
  * When the Chief Engineer restates an upheld objection in a later round in other words, both cite the same file:line;
- * the later one is folded into the earlier so one defect is not counted twice. The verdict is the same either way.
+ * the later one is folded into the earlier so one defect is not counted twice. Two in the same round are never folded.
  * OVERRULED objections are left out. Of the Chief Architect's own reviews, only the latest one's concerns still count.
  */
 function judgedObjections(replay: SessionReplay): { kept: Judged[]; overruled: number; orphans: Record<'stands' | 'measure' | 'minor' | 'unruled', number> } {
@@ -317,7 +317,8 @@ function judgedObjections(replay: SessionReplay): { kept: Judged[]; overruled: n
     const state: TopObjection['state'] = o.final === 'STANDS' || o.final === 'MEASURE' ? 'blocking'
       : o.final === 'MINOR' ? 'minor'
         : cleared || o.latest !== last?.n ? 'resolved' : 'blocking';
-    if (state === 'blocking' && o.location && kept.some(k => k.state === 'blocking' && k.location === o.location)) continue;
+    // Only a restatement in a later round folds; two objections at one file:line in the same round stay two.
+    if (state === 'blocking' && o.location && kept.some(k => k.state === 'blocking' && k.location === o.location && k.latest !== o.latest)) continue;
     kept.push({ ...o, ...ruling, state });
   }
   const reviews = replay.rounds.filter(r => r.architect);
