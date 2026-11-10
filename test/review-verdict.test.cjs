@@ -283,3 +283,22 @@ test('a question the Chief Architect already answered does not block', () => {
   const elsewhere = { ...replay(rounds), rulings: [{ id: 1, askedBy: 'lead_pm', stage: 'round 1', question: 'q', ruling: 'a' }, { id: 2, askedBy: 'chief_engineer', stage: 'round 2', question: 'q', ruling: 'a' }] };
   assert.equal(lib.reviewVerdict(elsewhere).questions, 1);
 });
+
+test('a Chief Architect review the harness could not read does not pass', () => {
+  const r = replay([{ n: 1, engineer: { reply: 'VERDICT: SHIP IT\nOPEN OBJECTIONS: 0', verdict: 'SHIP IT', openObjections: 0 },
+    architect: { reply: 'CONCERN 1 — REQUIRED: no rollback', verdict: 'UNPARSEABLE', concerns: [] } }]);
+  const v = lib.reviewVerdict(r);
+  assert.equal(v.verdict, 'CHANGES REQUESTED');
+  assert.match(v.summary, /Chief Architect's review could not be read/);
+});
+
+test('a restatement folded into an earlier objection keeps the stronger ruling', () => {
+  const at9 = h => `OPEN OBJECTIONS: 1\n\n1. **${h} (src/a.js:9).** Evidence.`;
+  const r = replay([
+    { n: 1, engineer: { reply: at9('The retry never stops'), openObjections: 1 }, tiebreak: ruled('MEASURE') },
+    { n: 2, engineer: { reply: at9('Retries are unbounded'), openObjections: 1 }, tiebreak: ruled('STANDS') }
+  ]);
+  const v = lib.reviewVerdict(r);
+  assert.equal(v.stands, 1);
+  assert.equal(v.measure, 0);
+});

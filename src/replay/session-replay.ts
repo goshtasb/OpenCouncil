@@ -258,6 +258,8 @@ export interface ReviewVerdict {
   questions: number;
   /** The Chief Engineer's last verdict was RETHINK. It blocks whatever its objection count. */
   engineerRethink: boolean;
+  /** The Chief Architect's last review could not be parsed, so its concerns could not be counted. It blocks. */
+  architectUnread: boolean;
   /** Every seat signed off the PRD as well. */
   signedOff: boolean;
   /** One clause: "no blocking objection; 2 minor notes" or "2 objections stand, 1 to verify". */

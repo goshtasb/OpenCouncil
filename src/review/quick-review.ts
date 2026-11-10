@@ -332,7 +332,13 @@ function judgedObjections(replay: SessionReplay): { kept: Judged[]; overruled: n
     const into = state === 'blocking' && o.location
       ? kept.find(k => k.state === 'blocking' && k.location === o.location && k.latest !== o.latest && !folded.has(`${kept.indexOf(k)}@${o.latest}`))
       : undefined;
-    if (into) { folded.add(`${kept.indexOf(into)}@${o.latest}`); continue; }
+    if (into) {
+      // The restatement may have been ruled more strongly than the first time; the stronger ruling is the one kept.
+      folded.add(`${kept.indexOf(into)}@${o.latest}`);
+      const best = stronger(o.final, into.ruling);
+      if (best === 'STANDS' || best === 'MEASURE') into.ruling = best;
+      continue;
+    }
     kept.push({ ...o, ...ruling, state });
   }
   const reviews = replay.rounds.filter(r => r.architect);
@@ -380,7 +386,10 @@ export function reviewVerdict(replay: SessionReplay): ReviewVerdict {
   const stands = count(o => o.ruling === 'STANDS') + orphans.stands;
   const measure = count(o => o.ruling === 'MEASURE') + orphans.measure;
   // A RETHINK with no concern behind it still says the change should not ship as is.
-  const rethink = !signedOff && /RETHINK/i.test([...replay.rounds].reverse().find(r => r.architect)?.architect?.verdict || '');
+  // So does a review the harness could not read: its concerns could not be counted, so nothing says it passed.
+  const lastVerdict = [...replay.rounds].reverse().find(r => r.architect)?.architect?.verdict || '';
+  const rethink = !signedOff && /RETHINK/i.test(lastVerdict);
+  const architectUnread = !signedOff && /UNPARSEABLE/i.test(lastVerdict);
   const required = Math.max(count(o => o.seat === 'Chief Architect'), rethink ? 1 : 0);
   const unruled = count(o => o.seat === 'Chief Engineer' && !o.ruling) + orphans.unruled;
   const minor = kept.filter(o => o.state === 'minor').length + orphans.minor;
@@ -393,7 +402,7 @@ export function reviewVerdict(replay: SessionReplay): ReviewVerdict {
   const engineerRethink = !signedOff && /RETHINK/i.test(lastEngineer?.verdict || '');
   const answered = (replay.rulings || []).filter(r => r.askedBy === 'chief_engineer' && r.stage === `round ${lastRound?.n}` && r.ruling.trim()).length;
   const questions = signedOff || !lastEngineer ? 0 : Math.max(0, extractArchitectQuestions(lastEngineer.reply).length - answered);
-  const blocking = stands + measure + required + unruled + questions + (engineerRethink ? 1 : 0);
+  const blocking = stands + measure + required + unruled + questions + (engineerRethink ? 1 : 0) + (architectUnread ? 1 : 0);
   const notes = minor ? plural(minor, 'minor note') : '';
   let verdict: ReviewVerdict['verdict'];
   let summary: string;
@@ -408,14 +417,15 @@ export function reviewVerdict(replay: SessionReplay): ReviewVerdict {
       required && `${plural(required, 'concern', 'concerns')} the Chief Architect marked required`,
       unruled && `${plural(unruled, 'objection', 'objections')} nobody ruled on`,
       questions && `${plural(questions, 'question', 'questions')} for the Chief Architect left open`,
-      engineerRethink && "the Chief Engineer's verdict is RETHINK"
+      engineerRethink && "the Chief Engineer's verdict is RETHINK",
+      architectUnread && "the Chief Architect's review could not be read"
     ].filter(Boolean).join(', ') + (notes ? `; ${notes}` : '') + (overruled ? `; the Chief Architect overruled ${plural(overruled, 'objection')}` : '');
   } else {
     verdict = 'PASS';
     summary = [signedOff && !minor ? 'every seat signed off' : 'no blocking objection', notes, overruled && `the Chief Architect overruled ${plural(overruled, 'objection')}`]
       .filter(Boolean).join('; ');
   }
-  return { verdict, stands, measure, unruled, required, minor, overruled, questions, engineerRethink, signedOff, summary };
+  return { verdict, stands, measure, unruled, required, minor, overruled, questions, engineerRethink, architectUnread, signedOff, summary };
 }
 
 const clean = (s: string) => s.replace(/\*\*(.+?)\*\*/g, '$1').replace(/`([^`]+)`/g, '$1').replace(/\s+/g, ' ').trim();
