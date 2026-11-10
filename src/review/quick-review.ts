@@ -80,9 +80,10 @@ export async function reviewConfig(repo: string, rounds = REVIEW_ROUNDS, found?:
   let order: string[] = FAILOVER_ORDER;
   if (findConfigFile(repo)) {
     config = JSON.parse(JSON.stringify(loadConfig(repo))) as CouncilConfig;
-    const listed = config.council.failover_providers?.length ? config.council.failover_providers : null;
-    const named = listed || Object.values(config.seats).map(s => s.provider);
-    if (listed) order = listed;
+    // The seats' own AIs, plus any listed under council.failover_providers (which come first, in their order).
+    const listed = config.council.failover_providers || [];
+    const named = [...new Set([...listed, ...Object.values(config.seats).map(s => s.provider)])];
+    if (listed.length) order = [...listed, ...FAILOVER_ORDER.filter(p => !listed.includes(p))];
     allowed = new Set([...available].filter(p => named.includes(p)));
     if (found) {
       if (allowed.size === 0) throw new Error(`None of the AIs .council/config.yml names (${joinNames([...new Set(named)].map(providerLabel))}) is ready. Run the fix printed for one of them, or list other ready ones under council.failover_providers.`);

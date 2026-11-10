@@ -221,6 +221,9 @@ test('failover never reaches an AI the config does not name: Gemini ready but un
   fs.writeFileSync(path.join(repo, '.council', 'config.yml'), 'council:\n  failover_providers: ["grok-cli", "antigravity", "claude-code"]\nseats:\n  lead_pm:\n    provider: "claude-code"\n    model: "sonnet"\n');
   const listed = await lib.reviewConfig(repo, 1, ready);
   assert.deepEqual(listed.config.council.failover_providers, ['grok-cli', 'antigravity', 'claude-code'], 'council.failover_providers widens it, in its own order');
+  fs.writeFileSync(path.join(repo, '.council', 'config.yml'), 'council:\n  failover_providers: ["grok-cli"]\nseats:\n  lead_pm:\n    provider: "claude-code"\n    model: "sonnet"\n  chief_engineer:\n    provider: "claude-code"\n    model: "opus"\n  chief_architect:\n    provider: "claude-code"\n    model: "sonnet"\n');
+  const added = await lib.reviewConfig(repo, 1, new Set(['claude-code']));
+  assert.deepEqual(added.config.council.failover_providers, ['claude-code'], 'the list adds to the seats\' own AIs; it never takes them away');
 });
 
 test('without a config, failover stays on the AIs the Seats line shows', async () => {
@@ -426,6 +429,11 @@ test('a model reply that talks about login code is not read as a lost login', ()
   assert.equal(lib.describeSeatError({ exitCode: 1, stdout: 'Invalid API key · Please run /login' }).kind, 'login');
   assert.equal(lib.describeSeatError({ exitCode: 1, stderr: 'Error: OAuth token has expired. Please obtain a new token or refresh your existing token.' }).kind, 'login');
   assert.equal(lib.describeSeatError({ exitCode: 1, stderr: 'API Error: 401 {"type":"error"}' }).kind, 'login');
+  for (const stderr of ['Please log in to continue', 'Error: 403 PERMISSION_DENIED', 'Your session has expired', 'Authentication required']) {
+    assert.equal(lib.describeSeatError({ exitCode: 1, stderr }).kind, 'login', stderr);
+  }
+  const model = 'The sign in route returns 403 when the session has expired; log in is handled in auth.ts.';
+  assert.notEqual(lib.describeSeatError({ exitCode: 1, stdout: model, shortMessage: 'Command failed with exit code 1: agy -p x', message: `Command failed with exit code 1: agy -p x\n\n${model}`, command: 'agy -p x' }).kind, 'login', 'execa repeats stdout in message; that is not the CLI speaking');
 });
 
 test('the Action maps a seat that is not signed in to its "Claude rejected the login" error (the grep in action.yml, run as written)', () => {
