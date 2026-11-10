@@ -134,3 +134,24 @@ test('a long model answer on stdout that contains a login line is not a lost log
   assert.equal(lib.describeSeatError({ stdout: 'Invalid API key · Please run /login', exitCode: 1 }).kind, 'login');
   assert.equal(lib.describeSeatError({ stderr: 'Failed to authenticate', exitCode: 1 }).kind, 'login');
 });
+
+test('an upheld ruling on an objection the parser could not read blocks from any round, even after a clean last round', () => {
+  const r = replay([
+    { n: 1, engineer: { reply: 'The retry never stops; see src/a.js:9.', openObjections: 1 }, tiebreak: ruled('STANDS') },
+    { n: 2, engineer: { reply: 'VERDICT: SHIP IT\nOPEN OBJECTIONS: 0', openObjections: 0 } }
+  ]);
+  assert.deepEqual([lib.reviewVerdict(r).verdict, lib.reviewVerdict(r).stands], ['CHANGES REQUESTED', 1]);
+  // With nothing readable to list, the page says why the list is empty instead of "no objections".
+  const v = lib.reviewVerdict(r);
+  const md = lib.renderReplayMarkdown(r, { top: lib.topObjections(r, 5), verdict: v, rounds: false });
+  assert.match(md, /did not pass \(1 objection stands\), but its objections could not be read one by one/);
+  assert.doesNotMatch(md, /raised no objections/);
+});
+
+test('only the objection list counts: a numbered note past the declared count, or a repeated number, is not another objection', () => {
+  const reply = ['VERDICT: SHIP WITH CHANGES', 'OPEN OBJECTIONS: 1', '', '1. **Rename the helper (src/a.js:1).** x', '', 'Notes:', '2. **Good test coverage.** y', '1. **Rename the helper again.** z'].join('\n');
+  const r = replay([{ n: 1, engineer: { reply, openObjections: 1 }, tiebreak: ruled('MINOR') }]);
+  const v = lib.reviewVerdict(r);
+  assert.deepEqual([v.verdict, v.summary], ['PASS', 'no blocking objection; 1 minor note']);
+  assert.equal(lib.topObjections(r, 5).length, 1);
+});

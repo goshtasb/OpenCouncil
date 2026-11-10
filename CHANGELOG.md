@@ -22,7 +22,7 @@ A first review on any setup: it checks which AIs are ready, runs with those, and
 - Every review, the debate included, ends with the Chief Architect ruling on whatever is still open, so the verdict rests on its rulings.
 - The Chief Engineer is told to object to defects in the change and the code it touches, not to the wording, numbering or test plan of the Lead PM's brief. Those objections were why a second round never converged.
 - The GitHub Action's `outcome` output is now `PASS`, `CHANGES_REQUESTED`, `NO_VERDICT` or `SKIPPED`, instead of `AWAITING_APPROVAL` or `STALLED`. A workflow that checks for the old values needs updating.
-- A login failure is recognised only from what a seat's CLI prints about its own login: Claude Code's own login lines wherever it prints them, and other login words, a bare 401 or 403 only on stderr. A model's answer that talks about 401s or logins no longer drops its AI. The Action's login error no longer assumes the seat was Claude.
+- A login failure is recognised only from what a seat's CLI prints about its own login: Claude Code's own login lines on stdout only when they are the whole of it, and other login words, a bare 401 or 403 only on stderr. A model's answer that talks about 401s or logins no longer drops its AI. The Action's login error no longer assumes the seat was Claude.
 - The GitHub Action still passes `--rounds 2`, so it keeps the two-round debate. It skips the setup check (`--no-check`): a rejected token still ends the run with the Action's own "rejected the login" error, now also when the seat's failure is reported as "is not signed in". But a seat that fails mid-run now falls back to another Claude model and the comment lists the gap.
 
 ## [0.3.2] — 2026-11-08

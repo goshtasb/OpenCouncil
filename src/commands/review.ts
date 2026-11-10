@@ -131,7 +131,7 @@ export function registerReviewCommands(program: Command, ctx: CliContext): void 
         console.log(chalk.bold(`\nWhat it found${result.top.length > 3 ? ` (top 3 of ${result.top.length} on the page)` : ''}:`));
         result.top.slice(0, 3).forEach((o, i) => console.log(`  ${i + 1}. ${o.headline.replace(/\*\*/g, '')}${o.location ? chalk.dim(` (${o.location})`) : ''}\n     ${chalk.dim(`${o.seat}, round ${o.round}${rulingNote(o) ? `, ${rulingNote(o)}` : ''}`)}`));
       } else {
-        console.log(`\n${nothingFoundText(result.replay)}`);
+        console.log(`\n${nothingFoundText(result.replay, result.verdict)}`);
       }
       console.log(chalk.bold('\nShare it:'));
       console.log(`  ${result.share}`);

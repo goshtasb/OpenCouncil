@@ -68,8 +68,8 @@ export function renderReplayHtml(r: SessionReplay, options: { note?: string; top
     parts.push('<h2>What the council found</h2>' + options.top.map((o, i) =>
       seatBlock(o.seat === 'Chief Engineer' ? 'eng' : 'arch', `objection ${i + 1}, round ${o.round}${o.location ? ` · ${o.location}` : ''}${rulingNote(o) ? ` · ${rulingNote(o)}` : ''}`,
         `<p><strong>${renderInline(o.headline)}</strong></p>${o.evidence && o.evidence !== o.headline ? `<p>${renderInline(o.evidence)}</p>` : ''}`)).join(''));
-  } else if (options.top && allOverruled(r)) {
-    parts.push(`<h2>What the council found</h2><p>${escapeHtml(nothingFoundText(r))}</p>`);
+  } else if (options.top && (allOverruled(r) || (v && v.verdict !== 'PASS'))) {
+    parts.push(`<h2>What the council found</h2><p>${escapeHtml(nothingFoundText(r, v))}</p>`);
   }
   if (options.share) {
     parts.push(`<div class="share"><div class="label">Share it</div><textarea readonly rows="3" aria-label="Share line">${escapeHtml(options.share)}</textarea></div>`);

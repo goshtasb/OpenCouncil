@@ -268,8 +268,15 @@ function judgedObjections(replay: SessionReplay): { kept: Judged[]; overruled: n
   for (const round of engineerRounds) {
     const open = round.engineer!.openObjections ?? 1;
     if (open === 0) continue;
-    const parsed = engineerObjections(round.engineer!.reply);
     const rulings = round.tiebreak?.rulings || [];
+    // The objection list only: a number counts once, and a numbered note past the declared count is not an objection
+    // unless the Chief Architect ruled on it.
+    const seenN = new Set<number>();
+    const parsed = engineerObjections(round.engineer!.reply).filter(o => {
+      if (seenN.has(o.n)) return false;
+      seenN.add(o.n);
+      return open === 999 || o.n <= open || rulings.some(r => r.id === o.n);
+    });
     for (const o of parsed) {
       const ruling = asRuling(rulings.find(r => r.id === o.n)?.ruling);
       const key = keyOf(o.headline);
@@ -279,13 +286,16 @@ function judgedObjections(replay: SessionReplay): { kept: Judged[]; overruled: n
         location: findLocation(`${o.headline} ${o.evidence}`) || earlier?.location, latest: round.n, final: ruling || earlier?.final
       });
     }
+    // Rulings on objections the parser could not read still count. Nothing can later clear one it cannot name, so an
+    // upheld one counts from whichever round it was in; minor and unruled ones only from the last round.
+    for (const r of rulings.filter(r => !parsed.some(o => o.n === r.id))) {
+      const k = asRuling(r.ruling);
+      if (k === 'STANDS') orphans.stands++; else if (k === 'MEASURE') orphans.measure++;
+      else if (round === last && !cleared) { if (k === 'MINOR') orphans.minor++; else if (!k) orphans.unruled++; }
+    }
     if (round === last && !cleared) {
       overruled = rulings.filter(r => asRuling(r.ruling) === 'OVERRULED').length;
-      // Rulings on objections the parser could not read still count, and so does an open count with nothing readable behind it.
-      for (const r of rulings.filter(r => !parsed.some(o => o.n === r.id))) {
-        const k = asRuling(r.ruling);
-        if (k === 'STANDS') orphans.stands++; else if (k === 'MEASURE') orphans.measure++; else if (k === 'MINOR') orphans.minor++; else if (!k) orphans.unruled++;
-      }
+      // An open count with nothing readable behind it still blocks.
       if (!parsed.length && !rulings.length) orphans.unruled += open === 999 ? 1 : open;
     }
   }

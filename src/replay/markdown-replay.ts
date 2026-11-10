@@ -20,8 +20,9 @@ export function allOverruled(r: Pick<SessionReplay, 'rounds'>): number {
   return rulings.length && rulings.every(x => String(x.ruling).toUpperCase() === 'OVERRULED') ? rulings.length : 0;
 }
 
-/** What to say when the found list is empty: no objection at all, or every one overruled. */
-export function nothingFoundText(r: Pick<SessionReplay, 'rounds'>): string {
+/** What to say when the found list is empty: no objection at all, every one overruled, or a verdict with nothing readable to list. */
+export function nothingFoundText(r: Pick<SessionReplay, 'rounds'>, verdict?: ReviewVerdict): string {
+  if (verdict && verdict.verdict !== 'PASS') return `The review did not pass (${verdict.summary}), but its objections could not be read one by one. Every round below has them in full.`;
   const n = allOverruled(r);
   return n ? `The Chief Engineer raised ${n} objection${n === 1 ? '' : 's'} and the Chief Architect overruled ${n === 1 ? 'it' : 'every one'}, so none stands.` : 'The council raised no objections.';
 }
@@ -59,7 +60,7 @@ export function renderReplayMarkdown(r: SessionReplay, options: { top?: TopObjec
       out.push(`   _${o.seat}, round ${o.round}${note ? `; ${note}` : ''}_`, '');
     });
   } else {
-    out.push(nothingFoundText(r), '');
+    out.push(nothingFoundText(r, v), '');
   }
   if (options.replayUrl) out.push(`[The full replay: every round, every seat](${options.replayUrl})`, '');
   if (options.rounds === false) {
