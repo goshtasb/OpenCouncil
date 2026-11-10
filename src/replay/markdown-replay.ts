@@ -13,11 +13,25 @@ function details(summary: string, body: string, lang = ''): string {
  */
 export interface SeatLines { lineup: string | null; gaps: string[] }
 
+/** How many objections the Chief Architect overruled when it overruled every open one in the last round, else 0. */
+export function allOverruled(r: Pick<SessionReplay, 'rounds'>): number {
+  const last = [...r.rounds].reverse().find(x => x.engineer);
+  const rulings = last?.tiebreak?.rulings || [];
+  return rulings.length && rulings.every(x => String(x.ruling).toUpperCase() === 'OVERRULED') ? rulings.length : 0;
+}
+
+/** What to say when the found list is empty: no objection at all, or every one overruled. */
+export function nothingFoundText(r: Pick<SessionReplay, 'rounds'>): string {
+  const n = allOverruled(r);
+  return n ? `The Chief Engineer raised ${n} objection${n === 1 ? '' : 's'} and the Chief Architect overruled ${n === 1 ? 'it' : 'every one'}, so none stands.` : 'The council raised no objections.';
+}
+
 export function renderReplayMarkdown(r: SessionReplay, options: { top?: TopObjection[]; share?: string; replayUrl?: string; rounds?: boolean; seats?: SeatLines } = {}): string {
   const out: string[] = [];
   out.push(`## Council review: ${r.slug}`, '');
   const rounds = r.rounds.filter(x => x.engineer).length;
-  const meaning = r.status === 'STALLED' ? ': the seats did not all sign off, so it would not ship as is' : r.status === 'AWAITING_APPROVAL' || r.status === 'APPROVED' ? ': all three seats signed off' : '';
+  const overruled = allOverruled(r);
+  const meaning = r.status === 'STALLED' && overruled ? `: no objection stands (the Chief Architect overruled ${overruled === 1 ? 'the only one' : `all ${overruled}`}), but nothing was signed off` : r.status === 'STALLED' ? ': the seats did not all sign off, so it would not ship as is' : r.status === 'AWAITING_APPROVAL' || r.status === 'APPROVED' ? ': all three seats signed off' : '';
   out.push(`Outcome: **${r.status}** after ${rounds} round${rounds === 1 ? '' : 's'}${meaning} (${r.profile} profile, base \`${r.baseSha.slice(0, 7)}\`).`, '');
   if (options.seats?.lineup) out.push(`Seats: ${options.seats.lineup}`, '');
   if (options.seats?.gaps.length) {
@@ -33,7 +47,7 @@ export function renderReplayMarkdown(r: SessionReplay, options: { top?: TopObjec
       out.push(`   _${o.seat}, round ${o.round}${o.ruling === 'STANDS' ? '; upheld by the Chief Architect' : o.ruling === 'MEASURE' ? '; the Chief Architect asked for a measurement' : ''}_`, '');
     });
   } else {
-    out.push('The council raised no objections.', '');
+    out.push(nothingFoundText(r), '');
   }
   if (options.replayUrl) out.push(`[The full replay: every round, every seat](${options.replayUrl})`, '');
   if (options.rounds === false) {

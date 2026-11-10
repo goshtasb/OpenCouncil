@@ -6,7 +6,7 @@ import { DEFAULT_CONFIG, findConfigFile, loadConfig } from '../config.js';
 import { PROVIDER_FIXES, SeatsPlan, detectProviders, planSeats } from '../setup.js';
 import { SessionReplay, TopObjection, loadSessionReplay, objectionHeadlines } from '../replay/session-replay.js';
 import { renderReplayHtml } from '../replay/html.js';
-import { renderReplayMarkdown } from '../replay/markdown-replay.js';
+import { allOverruled, renderReplayMarkdown } from '../replay/markdown-replay.js';
 import { SessionManager } from '../engine/session.js';
 import { PipelineManager } from '../engine/pipeline.js';
 import { CouncilEngine } from '../engine/council.js';
@@ -63,8 +63,10 @@ export function detectGates(repo: string): DetectedGates {
  * The config a review runs with. A project's own .council/config.yml is used when it exists; otherwise the
  * seats come from the provider CLIs on PATH and the gates from the project files, and nothing is written.
  * `found` is the set of providers that can hold a seat: the ones the setup check found ready, or, without a check,
- * every one installed. A configured seat whose provider is not in it moves to one that is, and says so in `notes`.
- * A seat that fails mid-review moves to the next provider in `found` (council.seat_failover).
+ * every one installed. The diff only ever goes to vendors the user can see on the Seats line: with a config file, the
+ * providers its seats name (or its council.failover_providers); without one, the providers the plan seats. A
+ * configured seat whose provider is not ready moves to another of those, and says so in `notes`. A seat that fails
+ * mid-review moves the same way (council.seat_failover).
  * Either way the round budget is cut to `rounds` so a review finishes in minutes.
  */
 export async function reviewConfig(repo: string, rounds = REVIEW_ROUNDS, found?: Set<string>): Promise<{ config: CouncilConfig; plan: SeatsPlan | null; gates: DetectedGates | null; notes: string[] }> {
@@ -73,15 +75,26 @@ export async function reviewConfig(repo: string, rounds = REVIEW_ROUNDS, found?:
   let gates: DetectedGates | null = null;
   const notes: string[] = [];
   const available: Set<string> = found || await detectProviders();
+  // The providers this review may send the change to. Failover never reaches past them.
+  let allowed: Set<string>;
+  let order: string[] = FAILOVER_ORDER;
   if (findConfigFile(repo)) {
     config = JSON.parse(JSON.stringify(loadConfig(repo))) as CouncilConfig;
+    const listed = config.council.failover_providers?.length ? config.council.failover_providers : null;
+    const named = listed || Object.values(config.seats).map(s => s.provider);
+    if (listed) order = listed;
+    allowed = new Set([...available].filter(p => named.includes(p)));
     if (found) {
-      const fallback = planSeats(available);
-      if (fallback.mode === 'none') throw new Error(noSeatMessage());
+      if (allowed.size === 0) throw new Error(`None of the AIs .council/config.yml names (${joinNames([...new Set(named)].map(providerLabel))}) is ready. Run the fix printed for one of them, or list other ready ones under council.failover_providers.`);
+      const fallback = planSeats(allowed);
       for (const seat of Object.keys(config.seats) as (keyof CouncilConfig['seats'])[]) {
         const configured = config.seats[seat];
         if (available.has(configured.provider)) continue;
         const next = fallback.seats[seat];
+        if (fallback.mode === 'none' || !allowed.has(next.provider)) {
+          notes.push(`${SEAT_LABELS[seat]}: ${providerLabel(configured.provider)} is not ready, and no other AI that .council/config.yml names can hold the seat${seat === 'chief_architect' ? ' with its tools off' : ''}, so this review runs without it. Fix ${providerLabel(configured.provider)}, or list another ready AI under council.failover_providers.`);
+          continue;
+        }
         notes.push(`${SEAT_LABELS[seat]}: ${providerLabel(configured.provider)} is not ready, so ${providerLabel(next.provider)} (${next.model}) takes the seat for this review. .council/config.yml is unchanged.`);
         config.seats[seat] = { ...configured, provider: next.provider, model: next.model };
       }
@@ -89,6 +102,7 @@ export async function reviewConfig(repo: string, rounds = REVIEW_ROUNDS, found?:
   } else {
     plan = planSeats(available);
     if (plan.mode === 'none') throw new Error(noSeatMessage());
+    allowed = new Set(Object.values(plan.seats).map(s => s.provider).filter(p => available.has(p)));
     for (const seat of Object.keys(plan.seats) as (keyof CouncilConfig['seats'])[]) {
       if (!available.has(plan.seats[seat].provider)) notes.push(`No ready AI can hold the ${SEAT_LABELS[seat]} seat${seat === 'chief_architect' ? ' with its tools off' : ''}, so this review runs without it. Claude Code or Grok can hold it.`);
     }
@@ -115,7 +129,7 @@ export async function reviewConfig(repo: string, rounds = REVIEW_ROUNDS, found?:
     signoff_revisions: quick ? 0 : 1,
     final_arbitration: quick,
     seat_failover: true,
-    failover_providers: FAILOVER_ORDER.filter(p => available.has(p)),
+    failover_providers: order.filter(p => allowed.has(p)),
     round_timeout_seconds: Math.min(config.council.round_timeout_seconds || 600, 600)
   };
   return { config, plan, gates, notes };
@@ -278,7 +292,9 @@ export function shareLine(replay: SessionReplay, top: TopObjection[]): string {
   const who = councilPhrase(replay);
   const count = top.length;
   if (!count) {
-    return `${who[0].toUpperCase()}${who.slice(1)} reviewed my ${/^Review this change before it ships\./.test(replay.task) ? 'change' : 'plan'} and found nothing to object to. Try it on yours: npx open-council-cli review`;
+    const subject = /^Review this change before it ships\./.test(replay.task) ? 'change' : 'plan';
+    const overruled = allOverruled(replay);
+    return `${who[0].toUpperCase()}${who.slice(1)} reviewed my ${subject}${overruled ? `: the Chief Engineer objected ${overruled === 1 ? 'once' : `${overruled} times`} and the Chief Architect overruled ${overruled === 1 ? 'it' : 'every one'}` : ' and found nothing to object to'}. Try it on yours: npx open-council-cli review`;
   }
   const first = clean(top[0].headline).replace(/[.:;]+$/, '');
   const where = top[0].location ? ` (${top[0].location})` : '';

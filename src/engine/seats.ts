@@ -1,5 +1,5 @@
 // Every seat call goes through runSeat. It records which provider and model answered for each seat, and, when
-// council.seat_failover is on, it drops a seat's provider after a failure and hands the seat to the next provider in
+// council.seat_failover is on, it drops a seat's model (or, for a lost login, its provider) after a failure and hands the seat to the next provider in
 // council.failover_providers instead of ending the run. The record (seats.json) is what a replay shows as the
 // line-up and the gaps, so a review never claims a vendor that did not answer.
 import * as fs from 'fs';
@@ -76,8 +76,13 @@ export function describeSeatError(err: any): { kind: SeatErrorKind; reason: stri
 
 /** The model a provider runs when it takes over a seat. Claude's Engineer gets opus, its other seats sonnet. */
 export function failoverModel(provider: string, seat: SeatName, defaults: Record<string, string>): string {
-  if (provider === 'claude-code') return seat === 'chief_engineer' ? 'opus' : 'sonnet';
-  return defaults[provider] || '';
+  return failoverModels(provider, seat, defaults)[0];
+}
+
+/** Every model a provider may take a seat on, best first. Claude has separate limits per model, so opus and sonnet both count. */
+export function failoverModels(provider: string, seat: SeatName, defaults: Record<string, string>): string[] {
+  if (provider === 'claude-code') return seat === 'chief_engineer' ? ['opus', 'sonnet'] : ['sonnet', 'opus'];
+  return [defaults[provider] || ''];
 }
 
 function recordPath(sessions: SessionManager, sessionId: string): string {
@@ -104,27 +109,32 @@ function writeRecord(sessions: SessionManager, sessionId: string, record: SeatsR
   fs.writeFileSync(recordPath(sessions, sessionId), JSON.stringify(record, null, 2), 'utf8');
 }
 
-/** Providers dropped earlier in this run. A provider that failed once (a used-up quota, a lost login) is not tried again. */
-const droppedProviders = (record: SeatsRecord) => new Set(record.failures.map(f => f.provider));
+/**
+ * Whether a provider and model were dropped earlier in this run. A lost login drops the whole provider, and so does a
+ * usage limit anywhere but Claude. Any other failure (a model not offered, a turn limit, an error), and a usage limit on
+ * Claude, drops only that model, because a Claude plan's opus limit says nothing about sonnet.
+ */
+export function isDropped(record: Pick<SeatsRecord, 'failures'>, provider: string, model: string): boolean {
+  return record.failures.some(f => f.provider === provider && (f.kind === 'login' || (f.kind === 'quota' && provider !== 'claude-code') || f.model === model));
+}
 
 /**
  * The next provider for a seat, from config.council.failover_providers in order: not dropped, installed in the
  * registry, and able to run with no tools when the call needs none (the Chief Architect judges only the text it is given).
  */
 function nextProvider(config: CouncilConfig, seat: SeatName, record: SeatsRecord, needsNoTools: boolean, defaults: Record<string, string>): SeatAssignment | null {
-  const dropped = droppedProviders(record);
   for (const provider of config.council.failover_providers || []) {
-    if (dropped.has(provider)) continue;
     let adapter;
     try { adapter = getAdapter(provider); } catch { continue; }
     if (needsNoTools && adapter.canDisableTools === false) continue;
-    return { provider, model: failoverModel(provider, seat, defaults) };
+    const model = failoverModels(provider, seat, defaults).find(m => !isDropped(record, provider, m));
+    if (model !== undefined) return { provider, model };
   }
   return null;
 }
 
 /**
- * Runs one seat call. On failure, with council.seat_failover on, the provider is dropped for the rest of the run, the
+ * Runs one seat call. On failure, with council.seat_failover on, the model (the provider, for a lost login) is dropped for the rest of the run, the
  * seat goes to the next provider in council.failover_providers, and the same call is made again. Every swap is written
  * to seats.json and to the session history. Throws SeatUnavailableError when no provider is left, and the original
  * error when failover is off.
@@ -140,11 +150,11 @@ export async function runSeat(
 ): Promise<string> {
   const record = readRecord(config, sessions, sessionId);
   const needsNoTools = !options.permissionMode;
-  // A seat whose provider was dropped earlier (say Gemini ran out of quota as Lead PM) moves before it is called again.
-  if (config.council.seat_failover && droppedProviders(record).has(config.seats[seat].provider)) {
+  // A seat whose provider or model was dropped earlier (say Gemini ran out of quota as Lead PM) moves before it is called again.
+  if (config.council.seat_failover && isDropped(record, config.seats[seat].provider, config.seats[seat].model)) {
     const next = nextProvider(config, seat, record, needsNoTools, DEFAULT_MODELS);
     if (!next) throw new SeatUnavailableError(seat, record.failures);
-    reassign(config, sessions, sessionId, seat, next, `its provider ${providerLabel(config.seats[seat].provider)} was dropped earlier in this run`);
+    reassign(config, sessions, sessionId, seat, next, `${providerLabel(config.seats[seat].provider)} (${config.seats[seat].model}) was dropped earlier in this run`);
   }
   while (true) {
     const { provider, model } = config.seats[seat];

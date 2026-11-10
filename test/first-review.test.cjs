@@ -211,6 +211,64 @@ test('a project config whose seat is not ready gets a ready provider for this re
   assert.equal(fs.readFileSync(configFile, 'utf8'), before);
 });
 
+test('failover never reaches an AI the config does not name: Gemini ready but unnamed gets nothing', async () => {
+  const repo = makeRepo();
+  fs.mkdirSync(path.join(repo, '.council'));
+  fs.writeFileSync(path.join(repo, '.council', 'config.yml'), 'seats:\n  lead_pm:\n    provider: "claude-code"\n    model: "sonnet"\n  chief_engineer:\n    provider: "claude-code"\n    model: "opus"\n  chief_architect:\n    provider: "grok-cli"\n    model: "grok-4.6"\n');
+  const ready = new Set(['claude-code', 'grok-cli', 'antigravity']);
+  const { config } = await lib.reviewConfig(repo, 1, ready);
+  assert.deepEqual(config.council.failover_providers, ['claude-code', 'grok-cli'], 'agy is ready but the config never named it');
+  fs.writeFileSync(path.join(repo, '.council', 'config.yml'), 'council:\n  failover_providers: ["grok-cli", "antigravity", "claude-code"]\nseats:\n  lead_pm:\n    provider: "claude-code"\n    model: "sonnet"\n');
+  const listed = await lib.reviewConfig(repo, 1, ready);
+  assert.deepEqual(listed.config.council.failover_providers, ['grok-cli', 'antigravity', 'claude-code'], 'council.failover_providers widens it, in its own order');
+});
+
+test('without a config, failover stays on the AIs the Seats line shows', async () => {
+  const repo = makeRepo();
+  const { config } = await lib.reviewConfig(repo, 1, new Set(['claude-code', 'antigravity', 'gemini-cli']));
+  assert.ok(!config.council.failover_providers.includes('gemini-cli'), 'gemini-cli is ready but holds no seat, so it gets no diff');
+  assert.deepEqual(config.council.failover_providers, ['claude-code', 'antigravity']);
+});
+
+test('a configured seat whose replacement is not ready either says it runs without that seat, not that someone took it', async () => {
+  const repo = makeRepo();
+  fs.mkdirSync(path.join(repo, '.council'));
+  fs.writeFileSync(path.join(repo, '.council', 'config.yml'), 'seats:\n  lead_pm:\n    provider: "antigravity"\n    model: "gemini-4-argon-high"\n  chief_engineer:\n    provider: "antigravity"\n    model: "gemini-4-argon-high"\n  chief_architect:\n    provider: "grok-cli"\n    model: "grok-4.6"\n');
+  const { config, notes } = await lib.reviewConfig(repo, 1, new Set(['antigravity']));
+  assert.equal(config.seats.chief_architect.provider, 'grok-cli', 'no ready AI in the config can hold it with tools off, so it is not moved');
+  assert.match(notes.join('\n'), /^Chief Architect: Grok is not ready, and no other AI that \.council\/config\.yml names can hold the seat with its tools off, so this review runs without it\./m);
+  assert.doesNotMatch(notes.join('\n'), /takes the seat/);
+  await assert.rejects(lib.reviewConfig(repo, 1, new Set(['claude-code'])), /None of the AIs \.council\/config\.yml names \(Gemini \(agy\) and Grok\) is ready/);
+});
+
+test('a usage limit on Claude opus drops only opus: the Engineer moves to sonnet before leaving Claude', () => {
+  const quota = { seat: 'chief_engineer', provider: 'claude-code', model: 'opus', kind: 'quota' };
+  assert.equal(lib.isDropped({ failures: [quota] }, 'claude-code', 'opus'), true);
+  assert.equal(lib.isDropped({ failures: [quota] }, 'claude-code', 'sonnet'), false);
+  const login = { ...quota, kind: 'login' };
+  assert.equal(lib.isDropped({ failures: [login] }, 'claude-code', 'sonnet'), true, 'a lost login drops every Claude model');
+  const grokQuota = { seat: 'chief_architect', provider: 'grok-cli', model: 'grok-4.6', kind: 'quota' };
+  assert.equal(lib.isDropped({ failures: [grokQuota] }, 'grok-cli', 'grok-other'), true, 'a usage limit elsewhere drops the provider');
+  assert.deepEqual(lib.failoverModels('claude-code', 'chief_engineer', lib.DEFAULT_MODELS), ['opus', 'sonnet']);
+});
+
+test('when the Chief Architect overrules every objection, the review says none stands instead of calling it clean or broken', async () => {
+  const ctx = quick();
+  fs.writeFileSync(path.join(ctx.repo, 'retry.js'), 'x\n');
+  ctx.adapters.pm.responses.push(PLAN(1));
+  ctx.adapters.eng.responses.push(TWO_OBJECTIONS);
+  ctx.adapters.arch.responses.push('RULING 1: OVERRULED — a 400 is not retried.\nRULING 2: OVERRULED — naming is taste.\nSUMMARY: Nothing stands.');
+  const result = await lib.runReview(ctx.repo, { config: ctx.config, sessions: ctx.sessions, pipeline: ctx.pipeline });
+  assert.equal(result.top.length, 0);
+  const md = fs.readFileSync(result.mdPath, 'utf8');
+  assert.match(md, /Outcome: \*\*STALLED\*\* after 1 round: no objection stands \(the Chief Architect overruled all 2\), but nothing was signed off/);
+  assert.match(md, /The Chief Engineer raised 2 objections and the Chief Architect overruled every one, so none stands\./);
+  assert.doesNotMatch(md, /raised no objections|would not ship as is/);
+  assert.match(result.share, /the Chief Engineer objected 2 times and the Chief Architect overruled every one/);
+  assert.doesNotMatch(result.share, /nothing to object to/);
+  assert.match(fs.readFileSync(result.htmlPath, 'utf8'), /overruled every one, so none stands/);
+});
+
 /** Registers scripted adapters under the real provider ids, so preflight checks them. Separate test files run in separate processes. */
 function fakeProvider(id, { installed = true, reply = 'PONG', error } = {}) {
   const adapter = {

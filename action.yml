@@ -104,7 +104,7 @@ runs:
         echo "out=$OUT" >> "$GITHUB_OUTPUT"
         git fetch --no-tags --quiet origin "$BASE_REF"
         set +e
-        node "$ACTION_DIR/bin/council.js" review --base "origin/$BASE_REF" --rounds "$ROUNDS" --no-open \
+        node "$ACTION_DIR/bin/council.js" review --base "origin/$BASE_REF" --rounds "$ROUNDS" --no-check --no-open \
           --out "$OUT" --comment "$OUT/comment.md" --replay-url "$RUN_URL" 2>&1 | tee "$OUT.log"
         status=${PIPESTATUS[0]}
         set -e
