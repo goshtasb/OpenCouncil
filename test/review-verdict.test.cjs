@@ -10,7 +10,7 @@ const { lib } = require('./helpers.cjs');
 const objections = (...headlines) => [`VERDICT: SHIP WITH CHANGES`, `OPEN OBJECTIONS: ${headlines.length}`, '',
   ...headlines.map((h, i) => `${i + 1}. **${h} (src/a.js:${i + 1}).** Evidence for it.`)].join('\n');
 const ruled = (...rulings) => ({ reply: '', rulings: rulings.map((ruling, i) => ({ id: i + 1, ruling, reason: 'r' })) });
-const replay = (rounds, status = 'STALLED') => ({ slug: 's', profile: 'quick', baseSha: 'abcdef1234', status, task: 'Review this change before it ships.\n...', rounds, seats: null });
+const replay = (rounds, status = 'STALLED') => ({ id: 'sess-1', slug: 's', profile: 'quick', baseSha: 'abcdef1234', status, task: 'Review this change before it ships.\n...', rounds, events: [], rulings: [], maxRounds: 3, signoffRevisions: 0 });
 
 test('parseTieBreak reads MINOR as a ruling of its own', () => {
   const t = lib.parseTieBreak('RULING 1: MINOR — naming only\nRULING 2: STANDS — breaks callers\nSUMMARY: s', 1, 2);
@@ -183,4 +183,32 @@ test('two blocking objections at one file:line in the same round are both counte
   const r = replay([{ n: 1, engineer: { reply, openObjections: 2 }, tiebreak: ruled('STANDS', 'STANDS') }]);
   assert.equal(lib.reviewVerdict(r).stands, 2);
   assert.equal(lib.topObjections(r, 5).length, 2);
+});
+
+test('a REQUIRED concern from the Chief Architect is not dropped for matching an overruled objection', () => {
+  const r = replay([{ n: 1, engineer: { reply: objections('No rollback for the migration'), openObjections: 1 }, tiebreak: ruled('OVERRULED'),
+    architect: { reply: '', verdict: 'SIGN-OFF WITH CONCERNS', concerns: [{ type: 'REQUIRED', description: 'No rollback for the migration (src/a.js:1). It must have one.' }] } }]);
+  assert.equal(lib.reviewVerdict(r).verdict, 'CHANGES REQUESTED');
+  assert.equal(lib.reviewVerdict(r).required, 1);
+});
+
+test('the HTML page shows the verdict: badge, its colour, the summary, and why an empty list is empty', () => {
+  const pass = replay([{ n: 1, engineer: { reply: objections('Rename it'), openObjections: 1 }, tiebreak: ruled('MINOR') }]);
+  let v = lib.reviewVerdict(pass);
+  let html = lib.renderReplayHtml(pass, { top: lib.topObjections(pass, 5), verdict: v });
+  assert.match(html, /<span class="outcome ok">Outcome: PASS<\/span>/);
+  assert.match(html, /No blocking objection; 1 minor note\./);
+  assert.match(html, /the Chief Architect ruled it minor/);
+  const blocked = replay([{ n: 1, engineer: { reply: 'It retries forever.', openObjections: 1 }, tiebreak: ruled('STANDS') }]);
+  v = lib.reviewVerdict(blocked);
+  html = lib.renderReplayHtml(blocked, { top: lib.topObjections(blocked, 5), verdict: v });
+  assert.match(html, /<span class="outcome bad">Outcome: CHANGES REQUESTED<\/span>/);
+  assert.match(html, /could not be read one by one/);
+  assert.doesNotMatch(html, /STALLED/);
+  // Without a verdict (any other replay) the page keeps the session status.
+  assert.match(lib.renderReplayHtml(blocked, {}), /Outcome: STALLED/);
+});
+
+test('Claude\'s "API Error: 401" line on its own is a lost login', () => {
+  assert.equal(lib.describeSeatError({ stdout: 'API Error: 401 {"type":"error","error":{"type":"authentication_error"}}', exitCode: 1 }).kind, 'login');
 });

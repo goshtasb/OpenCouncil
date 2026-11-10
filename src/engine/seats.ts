@@ -75,7 +75,7 @@ export function describeSeatError(err: any): { kind: SeatErrorKind; reason: stri
   // message and nothing else: Claude prints its login failure as one or two lines on stdout, where an answer runs longer.
   // Everything else, a bare 401 or 403 included, counts only on stderr or execa's exit line, where no model text goes.
   // execa's message repeats stdout, so the exit line is its shortMessage when there is one.
-  const CLAUDE_LOGIN = /^(invalid api key|please run \/login|failed to authenticate|oauth (access )?token (is invalid|has expired)|invalid bearer token|not logged in)/i;
+  const CLAUDE_LOGIN = /^(invalid api key|please run \/login|failed to authenticate|oauth (access )?token (is invalid|has expired)|invalid bearer token|not logged in|api error: 40[13]\b)/i;
   const outLines = String(typeof err?.stdout === 'string' ? err.stdout : '').split('\n').map(l => l.trim()).filter(Boolean);
   const stdoutLogin = outLines.length > 0 && outLines.length <= 3 && outLines.some(l => CLAUDE_LOGIN.test(l));
   const exitLine = typeof err?.shortMessage === 'string' ? err.shortMessage.split(err.command || '\u0000').join('<command>') : message;

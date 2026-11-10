@@ -328,9 +328,11 @@ function judgedObjections(replay: SessionReplay): { kept: Judged[]; overruled: n
       const required = /REQUIRED/i.test(c.type);
       if (!required && !(latest && /ADVISORY/i.test(c.type))) continue;
       const headline = c.description.split(/(?<=\.)\s/)[0];
-      if (byKey.has(keyOf(headline))) continue;
-      byKey.set(keyOf(headline), {} as Judged);
       const state: TopObjection['state'] = !latest || signedOff ? 'resolved' : required ? 'blocking' : 'minor';
+      // Skip a concern only when the list already has the same point at least as strongly: a REQUIRED concern is never
+      // dropped for matching an objection that was overruled, ruled minor or settled.
+      const rank = (x?: TopObjection['state']) => (x === 'blocking' ? 2 : x === 'minor' ? 1 : 0);
+      if (kept.some(k => keyOf(k.headline) === keyOf(headline) && rank(k.state) >= rank(state))) continue;
       kept.push({ round: round.n, seat: 'Chief Architect', headline, evidence: c.description, location: findLocation(c.description), latest: round.n, state });
     }
   }
