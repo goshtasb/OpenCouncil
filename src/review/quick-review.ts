@@ -279,7 +279,10 @@ function judgedObjections(replay: SessionReplay): { kept: Judged[]; overruled: n
     });
     for (const o of parsed) {
       const ruling = asRuling(rulings.find(r => r.id === o.n)?.ruling);
-      const key = keyOf(o.headline);
+      // A headline matches an earlier round's objection, never another one in the same round: two objections that
+      // happen to share a headline stay two, each with its own ruling.
+      let key = keyOf(o.headline);
+      if (byKey.get(key)?.latest === round.n) key = `${key}#${round.n}.${o.n}`;
       const earlier = byKey.get(key);
       byKey.set(key, {
         round: earlier ? earlier.round : round.n, seat: 'Chief Engineer', headline: earlier ? earlier.headline : o.headline, evidence: o.evidence,

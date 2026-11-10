@@ -155,3 +155,12 @@ test('only the objection list counts: a numbered note past the declared count, o
   assert.deepEqual([v.verdict, v.summary], ['PASS', 'no blocking objection; 1 minor note']);
   assert.equal(lib.topObjections(r, 5).length, 1);
 });
+
+test('two objections in one round with the same headline stay two, so a MINOR on one never clears a STANDS on the other', () => {
+  const reply = ['VERDICT: SHIP WITH CHANGES', 'OPEN OBJECTIONS: 2', '', '1. **Missing test.** for the parser', '2. **Missing test.** for the renderer'].join('\n');
+  for (const order of [['STANDS', 'MINOR'], ['MINOR', 'STANDS']]) {
+    const r = replay([{ n: 1, engineer: { reply, openObjections: 2 }, tiebreak: ruled(...order) }]);
+    const v = lib.reviewVerdict(r);
+    assert.deepEqual([v.verdict, v.stands, v.minor], ['CHANGES REQUESTED', 1, 1], order.join(' then '));
+  }
+});
