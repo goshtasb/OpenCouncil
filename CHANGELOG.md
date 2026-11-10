@@ -5,6 +5,8 @@ versions follow [SemVer](https://semver.org/). Get notified of new versions with
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-11-10
+
 A first review on any setup: it checks which AIs are ready, runs with those, and finishes even when a seat fails.
 
 ### Added
@@ -138,7 +140,8 @@ First public release.
 - Documents a seat saves instead of printing are recovered.
 - The zero-tool Architect seat stays tool-free across providers.
 
-[Unreleased]: https://github.com/goshtasb/OpenCouncil/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/goshtasb/OpenCouncil/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/goshtasb/OpenCouncil/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/goshtasb/OpenCouncil/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/goshtasb/OpenCouncil/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/goshtasb/OpenCouncil/compare/v0.2.1...v0.3.0
