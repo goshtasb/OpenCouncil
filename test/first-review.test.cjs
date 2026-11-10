@@ -211,6 +211,67 @@ test('a project config whose seat is not ready gets a ready provider for this re
   assert.equal(fs.readFileSync(configFile, 'utf8'), before);
 });
 
+test('failover never reaches an AI the config does not name: Gemini ready but unnamed gets nothing', async () => {
+  const repo = makeRepo();
+  fs.mkdirSync(path.join(repo, '.council'));
+  fs.writeFileSync(path.join(repo, '.council', 'config.yml'), 'seats:\n  lead_pm:\n    provider: "claude-code"\n    model: "sonnet"\n  chief_engineer:\n    provider: "claude-code"\n    model: "opus"\n  chief_architect:\n    provider: "grok-cli"\n    model: "grok-4.6"\n');
+  const ready = new Set(['claude-code', 'grok-cli', 'antigravity']);
+  const { config } = await lib.reviewConfig(repo, 1, ready);
+  assert.deepEqual(config.council.failover_providers, ['claude-code', 'grok-cli'], 'agy is ready but the config never named it');
+  fs.writeFileSync(path.join(repo, '.council', 'config.yml'), 'council:\n  failover_providers: ["grok-cli", "antigravity", "claude-code"]\nseats:\n  lead_pm:\n    provider: "claude-code"\n    model: "sonnet"\n');
+  const listed = await lib.reviewConfig(repo, 1, ready);
+  assert.deepEqual(listed.config.council.failover_providers, ['grok-cli', 'antigravity', 'claude-code'], 'council.failover_providers widens it, in its own order');
+  fs.writeFileSync(path.join(repo, '.council', 'config.yml'), 'council:\n  failover_providers: ["grok-cli"]\nseats:\n  lead_pm:\n    provider: "claude-code"\n    model: "sonnet"\n  chief_engineer:\n    provider: "claude-code"\n    model: "opus"\n  chief_architect:\n    provider: "claude-code"\n    model: "sonnet"\n');
+  const added = await lib.reviewConfig(repo, 1, new Set(['claude-code']));
+  assert.deepEqual(added.config.council.failover_providers, ['claude-code'], 'the list adds to the seats\' own AIs; it never takes them away');
+});
+
+test('without a config, failover stays on the AIs the Seats line shows', async () => {
+  const repo = makeRepo();
+  const { config } = await lib.reviewConfig(repo, 1, new Set(['claude-code', 'antigravity', 'gemini-cli']));
+  assert.ok(!config.council.failover_providers.includes('gemini-cli'), 'gemini-cli is ready but holds no seat, so it gets no diff');
+  assert.deepEqual(config.council.failover_providers, ['claude-code', 'antigravity']);
+});
+
+test('a configured seat whose replacement is not ready either says it runs without that seat, not that someone took it', async () => {
+  const repo = makeRepo();
+  fs.mkdirSync(path.join(repo, '.council'));
+  fs.writeFileSync(path.join(repo, '.council', 'config.yml'), 'seats:\n  lead_pm:\n    provider: "antigravity"\n    model: "gemini-4-argon-high"\n  chief_engineer:\n    provider: "antigravity"\n    model: "gemini-4-argon-high"\n  chief_architect:\n    provider: "grok-cli"\n    model: "grok-4.6"\n');
+  const { config, notes } = await lib.reviewConfig(repo, 1, new Set(['antigravity']));
+  assert.equal(config.seats.chief_architect.provider, 'grok-cli', 'no ready AI in the config can hold it with tools off, so it is not moved');
+  assert.match(notes.join('\n'), /^Chief Architect: Grok is not ready, and no other AI that \.council\/config\.yml names can hold the seat with its tools off, so this review runs without it\./m);
+  assert.doesNotMatch(notes.join('\n'), /takes the seat/);
+  await assert.rejects(lib.reviewConfig(repo, 1, new Set(['claude-code'])), /None of the AIs \.council\/config\.yml names \(Gemini \(agy\) and Grok\) is ready/);
+});
+
+test('a usage limit on Claude opus drops only opus: the Engineer moves to sonnet before leaving Claude', () => {
+  const quota = { seat: 'chief_engineer', provider: 'claude-code', model: 'opus', kind: 'quota' };
+  assert.equal(lib.isDropped({ failures: [quota] }, 'claude-code', 'opus'), true);
+  assert.equal(lib.isDropped({ failures: [quota] }, 'claude-code', 'sonnet'), false);
+  const login = { ...quota, kind: 'login' };
+  assert.equal(lib.isDropped({ failures: [login] }, 'claude-code', 'sonnet'), true, 'a lost login drops every Claude model');
+  const grokQuota = { seat: 'chief_architect', provider: 'grok-cli', model: 'grok-4.6', kind: 'quota' };
+  assert.equal(lib.isDropped({ failures: [grokQuota] }, 'grok-cli', 'grok-other'), true, 'a usage limit elsewhere drops the provider');
+  assert.deepEqual(lib.failoverModels('claude-code', 'chief_engineer', lib.DEFAULT_MODELS), ['opus', 'sonnet']);
+});
+
+test('when the Chief Architect overrules every objection, the review says none stands instead of calling it clean or broken', async () => {
+  const ctx = quick();
+  fs.writeFileSync(path.join(ctx.repo, 'retry.js'), 'x\n');
+  ctx.adapters.pm.responses.push(PLAN(1));
+  ctx.adapters.eng.responses.push(TWO_OBJECTIONS);
+  ctx.adapters.arch.responses.push('RULING 1: OVERRULED — a 400 is not retried.\nRULING 2: OVERRULED — naming is taste.\nSUMMARY: Nothing stands.');
+  const result = await lib.runReview(ctx.repo, { config: ctx.config, sessions: ctx.sessions, pipeline: ctx.pipeline });
+  assert.equal(result.top.length, 0);
+  const md = fs.readFileSync(result.mdPath, 'utf8');
+  assert.match(md, /Outcome: \*\*STALLED\*\* after 1 round: no objection stands \(the Chief Architect overruled all 2\), but nothing was signed off/);
+  assert.match(md, /The Chief Engineer raised 2 objections and the Chief Architect overruled every one, so none stands\./);
+  assert.doesNotMatch(md, /raised no objections|would not ship as is/);
+  assert.match(result.share, /the Chief Engineer objected 2 times and the Chief Architect overruled every one/);
+  assert.doesNotMatch(result.share, /nothing to object to/);
+  assert.match(fs.readFileSync(result.htmlPath, 'utf8'), /overruled every one, so none stands/);
+});
+
 /** Registers scripted adapters under the real provider ids, so preflight checks them. Separate test files run in separate processes. */
 function fakeProvider(id, { installed = true, reply = 'PONG', error } = {}) {
   const adapter = {
@@ -303,4 +364,99 @@ test('npx open-council-cli review with only Claude signed in: a labelled single-
   const md = fs.readFileSync(path.join(out, 'review.md'), 'utf8');
   assert.match(md, /^Seats: Claude only \(single vendor\)/m);
   assert.doesNotMatch(md, /Gemini|Grok/);
+});
+
+test('a Claude Engineer that hits its opus limit moves to sonnet before any other listed AI', async () => {
+  const ctx = quick();
+  const other = new ScriptedAdapter('fake-listed-first', [TWO_OBJECTIONS]);
+  lib.registerAdapter(other.name, other);
+  const claude = {
+    name: 'claude-code', canDisableTools: true, calls: [],
+    async isAvailable() { return true; },
+    async runPrompt(prompt, options) {
+      this.calls.push(options.model);
+      if (options.model === 'opus') throw Object.assign(new Error('Command failed'), { exitCode: 1, stderr: 'Claude usage limit reached for Opus' });
+      return TWO_OBJECTIONS;
+    }
+  };
+  lib.registerAdapter('claude-code', claude);
+  ctx.config.seats.chief_engineer = { ...ctx.config.seats.chief_engineer, provider: 'claude-code', model: 'opus' };
+  ctx.config.council.failover_providers = [other.name, 'claude-code'];
+  fs.writeFileSync(path.join(ctx.repo, 'retry.js'), 'x\n');
+  ctx.adapters.pm.responses.push(PLAN(1));
+  ctx.adapters.arch.responses.push(RULINGS);
+  const result = await lib.runReview(ctx.repo, { config: ctx.config, sessions: ctx.sessions, pipeline: ctx.pipeline });
+  assert.deepEqual(claude.calls, ['opus', 'sonnet']);
+  assert.equal(other.calls.length, 0, 'the other AI is not reached while Claude has a model left');
+  assert.deepEqual(ctx.config.seats.chief_engineer, { ...ctx.config.seats.chief_engineer, provider: 'claude-code', model: 'sonnet' });
+  assert.match(result.seats.gaps[0], /^Chief Engineer on Claude \(opus\) hit its usage limit/);
+});
+
+test('in a debate, "no objection stands" is only said when nothing made the found list', () => {
+  const replay = { slug: 's', status: 'STALLED', profile: 'quick', baseSha: 'abcdef1234', task: 't', rounds: [
+    { n: 1, engineer: { reply: 'x', verdict: 'SHIP WITH CHANGES' }, tiebreak: { reply: 'r', rulings: [{ n: 1, ruling: 'STANDS' }] } },
+    { n: 2, engineer: { reply: 'y', verdict: 'SHIP WITH CHANGES' }, tiebreak: { reply: 'r', rulings: [{ n: 1, ruling: 'OVERRULED' }] } }
+  ] };
+  const top = [{ round: 1, seat: 'Chief Engineer', headline: 'Upheld in round 1', ruling: 'STANDS' }];
+  const md = lib.renderReplayMarkdown(replay, { top, rounds: false });
+  assert.match(md, /would not ship as is/);
+  assert.doesNotMatch(md, /no objection stands/);
+  assert.match(lib.renderReplayMarkdown(replay, { top: [], rounds: false }), /no objection stands \(the Chief Architect overruled the only one\)/);
+});
+
+test('the seat keeps its own provider first even when council.failover_providers leaves it out', async () => {
+  const ctx = quick();
+  const other = new ScriptedAdapter('fake-only-listed', [TWO_OBJECTIONS]);
+  lib.registerAdapter(other.name, other);
+  const calls = [];
+  lib.registerAdapter('claude-code', {
+    name: 'claude-code', canDisableTools: true,
+    async isAvailable() { return true; },
+    async runPrompt(prompt, options) { calls.push(options.model); if (options.model === 'opus') throw Object.assign(new Error('Command failed'), { exitCode: 1, stderr: 'usage limit reached' }); return TWO_OBJECTIONS; }
+  });
+  ctx.config.seats.chief_engineer = { ...ctx.config.seats.chief_engineer, provider: 'claude-code', model: 'opus' };
+  ctx.config.council.failover_providers = [other.name];
+  fs.writeFileSync(path.join(ctx.repo, 'retry.js'), 'x\n');
+  ctx.adapters.pm.responses.push(PLAN(1));
+  ctx.adapters.arch.responses.push(RULINGS);
+  await lib.runReview(ctx.repo, { config: ctx.config, sessions: ctx.sessions, pipeline: ctx.pipeline });
+  assert.deepEqual(calls, ['opus', 'sonnet']);
+  assert.equal(other.calls.length, 0);
+});
+
+test('a model reply that talks about login code is not read as a lost login', () => {
+  assert.notEqual(lib.describeSeatError({ exitCode: 1, stdout: 'The sign in route returns 403 when the session has expired; log in is handled in auth.ts.' }).kind, 'login');
+  assert.equal(lib.describeSeatError({ exitCode: 1, stdout: 'Invalid API key · Please run /login' }).kind, 'login');
+  assert.equal(lib.describeSeatError({ exitCode: 1, stderr: 'Error: OAuth token has expired. Please obtain a new token or refresh your existing token.' }).kind, 'login');
+  assert.equal(lib.describeSeatError({ exitCode: 1, stderr: 'API Error: 401 {"type":"error"}' }).kind, 'login');
+  for (const stderr of ['Please log in to continue', 'Error: 403 PERMISSION_DENIED', 'Your session has expired', 'Authentication required']) {
+    assert.equal(lib.describeSeatError({ exitCode: 1, stderr }).kind, 'login', stderr);
+  }
+  const model = 'The sign in route returns 403 when the session has expired; log in is handled in auth.ts.';
+  assert.notEqual(lib.describeSeatError({ exitCode: 1, stdout: model, shortMessage: 'Command failed with exit code 1: agy -p x', message: `Command failed with exit code 1: agy -p x\n\n${model}`, command: 'agy -p x' }).kind, 'login', 'execa repeats stdout in message; that is not the CLI speaking');
+});
+
+test('the Action maps a seat that is not signed in to its "Claude rejected the login" error (the grep in action.yml, run as written)', () => {
+  const yml = fs.readFileSync(path.join(__dirname, '..', 'action.yml'), 'utf8');
+  const m = yml.match(/if grep -qiE '([^']+)' "\$OUT\.log"; then\n\s*echo "::error title=Open Council::Claude rejected the login/);
+  assert.ok(m, 'action.yml still greps the review log for a rejected login');
+  const reason = lib.describeSeatError({ exitCode: 1, stdout: 'Invalid API key · Please run /login' }).reason;
+  const failure = { seat: 'lead_pm', provider: 'claude-code', model: 'sonnet', stage: 'draft v1', kind: 'login', reason, at: '' };
+  const lines = [new lib.SeatUnavailableError('lead_pm', [failure]).message];
+  for (const line of lines) {
+    const r = spawnSync('grep', ['-qiE', m[1]], { input: line + '\n' });
+    assert.equal(r.status, 0, `grep matches: ${line}`);
+  }
+  assert.equal(spawnSync('grep', ['-qiE', m[1]], { input: 'No provider is left for the Chief Engineer seat: Claude hit its usage limit.\n' }).status, 1, 'a usage limit is not called a rejected login');
+});
+
+test('review --no-check still stops up front when the config names only AIs that are not installed', () => {
+  const { env } = fakeClaudeOnPath();
+  const repo = makeRepo();
+  fs.mkdirSync(path.join(repo, '.council'));
+  fs.writeFileSync(path.join(repo, '.council', 'config.yml'), 'seats:\n  lead_pm:\n    provider: "antigravity"\n    model: "gemini-4-argon-high"\n  chief_engineer:\n    provider: "grok-cli"\n    model: "grok-4.6"\n  chief_architect:\n    provider: "grok-cli"\n    model: "grok-4.6"\n');
+  fs.writeFileSync(path.join(repo, 'retry.js'), 'x\n');
+  const r = spawnSync(process.execPath, [bin, 'review', '--no-check', '--no-open'], { cwd: repo, env, encoding: 'utf8' });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stdout + r.stderr, /None of the AIs \.council\/config\.yml names \(Gemini \(agy\) and Grok\) is ready/);
 });

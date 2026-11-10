@@ -7,7 +7,7 @@ import { REVIEW_DEBATE_ROUNDS, REVIEW_MAX_ROUNDS, REVIEW_MIN_ROUNDS, REVIEW_ROUN
 import { describeLineup, formatChecks, lineupLines, preflight, readyProviders } from '../review/preflight.js';
 import { findConfigFile, loadConfig } from '../config.js';
 import { ProviderId } from '../setup.js';
-import { rulingCounts } from '../replay/markdown-replay.js';
+import { nothingFoundText, rulingCounts } from '../replay/markdown-replay.js';
 import { resolveRepoRoot } from '../utils/paths.js';
 import { logger } from '../utils/logger.js';
 import { SessionManager } from '../engine/session.js';
@@ -91,7 +91,8 @@ export function registerReviewCommands(program: Command, ctx: CliContext): void 
         checks = await preflight({ models: configuredModels(repo) });
         formatChecks(checks).forEach(line => console.log(line));
       }
-      const ready = checks ? new Set<string>(readyProviders(checks)) : undefined;
+      // With --no-check every installed CLI counts as ready, so config seats on a missing CLI still move up front.
+      const ready = new Set<string>(readyProviders(checks || await preflight({ ping: false })));
       const { config, gates, notes } = await reviewConfig(repo, rounds, ready);
       const lineup = describeLineup(config.seats);
       lineupLines({ seats: config.seats }, checks || undefined).forEach((line, i) => (i === 0 ? logger.info(`Seats: ${line}`) : logger.warn(line)));
@@ -136,7 +137,7 @@ export function registerReviewCommands(program: Command, ctx: CliContext): void 
         console.log(chalk.bold(`\nWhat it found${result.top.length > 3 ? ` (top 3 of ${result.top.length} on the page)` : ''}:`));
         result.top.slice(0, 3).forEach((o, i) => console.log(`  ${i + 1}. ${o.headline.replace(/\*\*/g, '')}${o.location ? chalk.dim(` (${o.location})`) : ''}\n     ${chalk.dim(`${o.seat}, round ${o.round}${o.ruling === 'STANDS' ? ', upheld by the Chief Architect' : ''}`)}`));
       } else {
-        console.log('\nThe council raised no objections.');
+        console.log(`\n${nothingFoundText(result.replay)}`);
       }
       console.log(chalk.bold('\nShare it:'));
       console.log(`  ${result.share}`);

@@ -1,6 +1,6 @@
 import { SessionReplay, TopObjection } from './session-replay.js';
 import { escapeHtml, renderMarkdown } from './markdown.js';
-import { SeatLines, rulingCounts } from './markdown-replay.js';
+import { SeatLines, allOverruled, nothingFoundText, rulingCounts } from './markdown-replay.js';
 
 const SEATS = {
   pm: { name: 'Lead PM', cls: 'pm' },
@@ -65,6 +65,8 @@ export function renderReplayHtml(r: SessionReplay, options: { note?: string; top
     parts.push('<h2>What the council found</h2>' + options.top.map((o, i) =>
       seatBlock(o.seat === 'Chief Engineer' ? 'eng' : 'arch', `objection ${i + 1}, round ${o.round}${o.location ? ` · ${o.location}` : ''}${o.ruling === 'STANDS' ? ' · upheld by the Chief Architect' : o.ruling === 'MEASURE' ? ' · to measure' : ''}`,
         `<p><strong>${renderInline(o.headline)}</strong></p>${o.evidence && o.evidence !== o.headline ? `<p>${renderInline(o.evidence)}</p>` : ''}`)).join(''));
+  } else if (options.top && allOverruled(r)) {
+    parts.push(`<h2>What the council found</h2><p>${escapeHtml(nothingFoundText(r))}</p>`);
   }
   if (options.share) {
     parts.push(`<div class="share"><div class="label">Share it</div><textarea readonly rows="3" aria-label="Share line">${escapeHtml(options.share)}</textarea></div>`);

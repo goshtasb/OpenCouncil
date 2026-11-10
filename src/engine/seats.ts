@@ -1,5 +1,5 @@
 // Every seat call goes through runSeat. It records which provider and model answered for each seat, and, when
-// council.seat_failover is on, it drops a seat's provider after a failure and hands the seat to the next provider in
+// council.seat_failover is on, it drops a seat's model (or, for a lost login, its provider) after a failure and hands the seat to the next provider in
 // council.failover_providers instead of ending the run. The record (seats.json) is what a replay shows as the
 // line-up and the gaps, so a review never claims a vendor that did not answer.
 import * as fs from 'fs';
@@ -70,14 +70,26 @@ export function describeSeatError(err: any): { kind: SeatErrorKind; reason: stri
   if (err?.timedOut) return { kind: 'timeout', reason: 'timed out' };
   if (/\b429\b|quota|rate.?limit|resource.?exhausted|usage limit|limit reached|out of credits/i.test(text)) return { kind: 'quota', reason: `hit its usage limit${tail ? ` (${tail})` : ''}` };
   if (/max(imum)?[ _-]?turns/i.test(text)) return { kind: 'max-turns', reason: `stopped at its turn limit${tail ? ` (${tail})` : ''}` };
-  if (/not logged in|please (run )?\/?login|log ?in|sign ?in|unauthori[sz]ed|authenticat|invalid api key|\b401\b|\b403\b|expired/i.test(text)) return { kind: 'login', reason: `is not signed in${tail ? ` (${tail})` : ''}` };
+  // Only phrases a CLI prints about its own login, so a model's text about login code does not drop the whole provider.
+  // Claude Code prints its login errors on stdout, so its exact phrases count anywhere. The generic ones other CLIs use
+  // ("please log in", "session expired", a 403) count only on stderr or in the error message, where no model text goes.
+  // execa's message repeats stdout, so take its shortMessage (the exit line alone) when there is one.
+  const exitLine = typeof err?.shortMessage === 'string' ? err.shortMessage.split(err.command || '\u0000').join('<command>') : message;
+  const errText = `${typeof err?.stderr === 'string' ? err.stderr : ''}\n${exitLine}`;
+  if (/not (logged|signed) in|please (run )?\/?login|run \/login|(log|sign) in again|unauthori[sz]ed|authentication (failed|error|required)|failed to authenticate|invalid (api key|x-api-key|token)|token (has )?expired|\b401\b/i.test(text)
+    || /please (log|sign) ?in|(session|credentials?|login) (has |have )?expired|permission[_ ]denied|\b403\b|authenticat/i.test(errText)) return { kind: 'login', reason: `is not signed in${tail ? ` (${tail})` : ''}` };
   return { kind: 'error', reason: tail ? `failed: ${tail}` : `exited with code ${err?.exitCode ?? 'unknown'}` };
 }
 
 /** The model a provider runs when it takes over a seat. Claude's Engineer gets opus, its other seats sonnet. */
 export function failoverModel(provider: string, seat: SeatName, defaults: Record<string, string>): string {
-  if (provider === 'claude-code') return seat === 'chief_engineer' ? 'opus' : 'sonnet';
-  return defaults[provider] || '';
+  return failoverModels(provider, seat, defaults)[0];
+}
+
+/** Every model a provider may take a seat on, best first. Claude has separate limits per model, so opus and sonnet both count. */
+export function failoverModels(provider: string, seat: SeatName, defaults: Record<string, string>): string[] {
+  if (provider === 'claude-code') return seat === 'chief_engineer' ? ['opus', 'sonnet'] : ['sonnet', 'opus'];
+  return [defaults[provider] || ''];
 }
 
 function recordPath(sessions: SessionManager, sessionId: string): string {
@@ -104,27 +116,36 @@ function writeRecord(sessions: SessionManager, sessionId: string, record: SeatsR
   fs.writeFileSync(recordPath(sessions, sessionId), JSON.stringify(record, null, 2), 'utf8');
 }
 
-/** Providers dropped earlier in this run. A provider that failed once (a used-up quota, a lost login) is not tried again. */
-const droppedProviders = (record: SeatsRecord) => new Set(record.failures.map(f => f.provider));
+/**
+ * Whether a provider and model were dropped earlier in this run. A lost login drops the whole provider, and so does a
+ * usage limit anywhere but Claude. Any other failure (a model not offered, a turn limit, an error), and a usage limit on
+ * Claude, drops only that model, because a Claude plan's opus limit says nothing about sonnet.
+ */
+export function isDropped(record: Pick<SeatsRecord, 'failures'>, provider: string, model: string): boolean {
+  return record.failures.some(f => f.provider === provider && (f.kind === 'login' || (f.kind === 'quota' && provider !== 'claude-code') || f.model === model));
+}
 
 /**
  * The next provider for a seat, from config.council.failover_providers in order: not dropped, installed in the
  * registry, and able to run with no tools when the call needs none (the Chief Architect judges only the text it is given).
  */
 function nextProvider(config: CouncilConfig, seat: SeatName, record: SeatsRecord, needsNoTools: boolean, defaults: Record<string, string>): SeatAssignment | null {
-  const dropped = droppedProviders(record);
-  for (const provider of config.council.failover_providers || []) {
-    if (dropped.has(provider)) continue;
+  // The seat's own provider always comes first, listed or not: it already holds the seat, so trying its other model
+  // (Claude's sonnet after opus) sends nothing to a new vendor.
+  const current = config.seats[seat].provider;
+  for (const provider of [current, ...(config.council.failover_providers || []).filter(p => p !== current)]) {
     let adapter;
     try { adapter = getAdapter(provider); } catch { continue; }
     if (needsNoTools && adapter.canDisableTools === false) continue;
-    return { provider, model: failoverModel(provider, seat, defaults) };
+    // The seat's own provider is retried only on a model it knows by name, never on an empty default.
+    const model = failoverModels(provider, seat, defaults).find(m => (provider !== current || m) && !isDropped(record, provider, m));
+    if (model !== undefined) return { provider, model };
   }
   return null;
 }
 
 /**
- * Runs one seat call. On failure, with council.seat_failover on, the provider is dropped for the rest of the run, the
+ * Runs one seat call. On failure, with council.seat_failover on, the model (the provider, for a lost login) is dropped for the rest of the run, the
  * seat goes to the next provider in council.failover_providers, and the same call is made again. Every swap is written
  * to seats.json and to the session history. Throws SeatUnavailableError when no provider is left, and the original
  * error when failover is off.
@@ -140,11 +161,11 @@ export async function runSeat(
 ): Promise<string> {
   const record = readRecord(config, sessions, sessionId);
   const needsNoTools = !options.permissionMode;
-  // A seat whose provider was dropped earlier (say Gemini ran out of quota as Lead PM) moves before it is called again.
-  if (config.council.seat_failover && droppedProviders(record).has(config.seats[seat].provider)) {
+  // A seat whose provider or model was dropped earlier (say Gemini ran out of quota as Lead PM) moves before it is called again.
+  if (config.council.seat_failover && isDropped(record, config.seats[seat].provider, config.seats[seat].model)) {
     const next = nextProvider(config, seat, record, needsNoTools, DEFAULT_MODELS);
     if (!next) throw new SeatUnavailableError(seat, record.failures);
-    reassign(config, sessions, sessionId, seat, next, `its provider ${providerLabel(config.seats[seat].provider)} was dropped earlier in this run`);
+    reassign(config, sessions, sessionId, seat, next, `${providerLabel(config.seats[seat].provider)} (${config.seats[seat].model}) was dropped earlier in this run`);
   }
   while (true) {
     const { provider, model } = config.seats[seat];
