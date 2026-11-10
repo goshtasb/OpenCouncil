@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { CouncilConfig, ArchitectureReviewResult, ArchitectVerdictType } from '../types.js';
 import { SessionManager, roundDirName } from './session.js';
-import { getAdapter } from '../adapters/registry.js';
+import { runSeat } from './seats.js';
 import { sha256File, sha256String } from '../utils/hash.js';
 import { buildSystemPrompt, FIELD_SEPARATOR, protocolLines } from '../utils/prompts.js';
 import { logger } from '../utils/logger.js';
@@ -79,16 +79,13 @@ export class ArchitectureReviewEngine {
 
     fs.writeFileSync(path.join(reviewDir, 'prompt.md'), prompt, 'utf8');
 
-    const architectConfig = this.config.seats.chief_architect;
-    const adapter = getAdapter(architectConfig.provider);
 
     logger.council('CHIEF ARCHITECT', `Conducting architecture sign-off review on v${roundsDone}...`);
     this.sessionManager.setActivity('chief_architect', 'busy', `Reviewing v${roundsDone}`);
     let reply: string;
     try {
-      reply = await adapter.runPrompt(prompt, {
+      reply = await runSeat(this.config, this.sessionManager, sessionId, 'chief_architect', `sign-off review of v${roundsDone}`, prompt, {
         cwd: sessionDir,
-        model: architectConfig.model,
         systemPrompt: buildSystemPrompt(this.config, 'chief_architect', 'review', meta.repoPath),
         timeoutSeconds: this.config.council.round_timeout_seconds
       });

@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ArchitectRuling, CouncilConfig } from '../types.js';
 import { SessionManager } from './session.js';
-import { getAdapter } from '../adapters/registry.js';
+import { runSeat } from './seats.js';
 import { buildSystemPrompt, FIELD_SEPARATOR, protocolLines } from '../utils/prompts.js';
 import { logger } from '../utils/logger.js';
 
@@ -75,8 +75,6 @@ export class ArchitectQuestionEngine {
       'Answer every question per the Undefined-Rule contract: one line each, `ANSWER <n>: <binding rule> — <reason>`.'
     ].join('\n');
 
-    const architect = this.config.seats.chief_architect;
-    const adapter = getAdapter(architect.provider);
     const answers = new Map<number, string>();
     for (let attempt = 1; attempt <= 2 && answers.size < questions.length; attempt++) {
       const missing = questions.map((_, i) => i + 1).filter(n => !answers.has(n));
@@ -86,9 +84,8 @@ export class ArchitectQuestionEngine {
       this.sessionManager.setActivity('chief_architect', 'busy', `Ruling on questions from ${askedBy}`);
       let reply: string;
       try {
-        reply = await adapter.runPrompt(prompt, {
+        reply = await runSeat(this.config, this.sessionManager, sessionId, 'chief_architect', `questions from ${askedBy}`, prompt, {
           cwd: sessionDir,
-          model: architect.model,
           systemPrompt: buildSystemPrompt(this.config, 'chief_architect', 'question', meta.repoPath),
           timeoutSeconds: this.config.council.round_timeout_seconds
         });

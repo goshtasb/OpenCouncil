@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
+import { SeatsRecord, loadSeatsRecord } from '../engine/seats.js';
 
 /**
  * Everything a replay shows, read from a session directory's own files. Nothing is summarised:
@@ -17,6 +18,8 @@ export interface ReplayRound {
   engineer?: { reply: string; verdict?: string; openObjections?: number };
   architect?: { reply: string; verdict?: string; concerns: ReplayConcern[]; summary?: string };
   signoff?: { reply: string; verdict?: string; summary?: string };
+  /** The Chief Architect's rulings on the Chief Engineer's open objections of this round. */
+  tiebreak?: { reply: string; rulings: Array<{ id: number; ruling: string; reason: string }>; summary?: string };
 }
 export interface SessionReplay {
   id: string;
@@ -36,6 +39,8 @@ export interface SessionReplay {
   commits?: string;
   diff?: string;
   blockedReason?: string;
+  /** Who held each seat and which seats failed (seats.json); absent for sessions from before 0.4. */
+  seats?: SeatsRecord;
 }
 
 /** Shortens machine-specific absolute paths so a replay can be shared. */
@@ -111,6 +116,12 @@ export function loadSessionReplay(sessionDir: string): SessionReplay {
         : [];
       round.architect = { reply: scrub(archReply), verdict: r.verdict, concerns, summary: r.summary && scrub(r.summary) };
     }
+    const tbReply = read(path.join(sessionDir, `tiebreak-${pad2(n)}`, 'reply.md'));
+    if (tbReply !== undefined) {
+      const t = readJson<Record<string, any>>(path.join(sessionDir, `tiebreak-${pad2(n)}`, 'rulings.json')) || {};
+      const rulings = Array.isArray(t.rulings) ? t.rulings.map((x: any) => ({ id: Number(x.id), ruling: String(x.ruling || ''), reason: scrub(String(x.reason || '')) })) : [];
+      round.tiebreak = { reply: scrub(tbReply), rulings, summary: t.summary && scrub(String(t.summary)) };
+    }
     const signReply = read(path.join(sessionDir, `signoff-${pad2(n)}`, 'reply.md'));
     if (signReply !== undefined) {
       const s = readJson<Record<string, any>>(path.join(sessionDir, `signoff-${pad2(n)}`, 'signoff.json')) || {};
@@ -170,22 +181,24 @@ export function loadSessionReplay(sessionDir: string): SessionReplay {
     } catch { /* the checkout moved or was pruned: the replay simply has no commits section */ }
   }
   if (typeof details.blockedReason === 'string') replay.blockedReason = scrub(details.blockedReason);
+  const seats = loadSeatsRecord(sessionDir);
+  if (seats) replay.seats = { ...seats, failures: (seats.failures || []).map(f => ({ ...f, reason: scrub(String(f.reason || '')) })), answered: seats.answered || [] };
   return replay;
 }
 
 /** The numbered objections in a Chief Engineer reply: "1. **Headline.** evidence…". */
-export function objectionHeadlines(reply: string): { headline: string; evidence: string }[] {
-  const out: { headline: string; evidence: string }[] = [];
+export function objectionHeadlines(reply: string): { n: number; headline: string; evidence: string }[] {
+  const out: { n: number; headline: string; evidence: string }[] = [];
   const lines = reply.split('\n');
   for (let i = 0; i < lines.length; i++) {
-    const m = /^\d+\.\s+\*\*(.+?)\*\*\s*(.*)$/.exec(lines[i]);
+    const m = /^(\d+)\.\s+\*\*(.+?)\*\*\s*(.*)$/.exec(lines[i]);
     if (!m) continue;
-    let evidence = (m[2] || '').trim();
+    let evidence = (m[3] || '').trim();
     // Seats often put the evidence on the next lines, as "- Evidence: ..." bullets; take the first one with content.
     for (let j = i + 1; !evidence && j < lines.length && !/^\d+\.\s/.test(lines[j]); j++) {
       evidence = lines[j].trim().replace(/^[-*]\s*/, '').replace(/^\*{0,2}(Evidence|Result|Why|Why it matters now)\s*:\s*\*{0,2}\s*/i, '').trim();
     }
-    out.push({ headline: m[1].trim(), evidence });
+    out.push({ n: parseInt(m[1], 10), headline: m[2].trim(), evidence });
   }
   return out;
 }
@@ -211,4 +224,12 @@ export function describeBlock(reason: string): string {
 }
 
 /** One objection the review page leads with. */
-export interface TopObjection { round: number; seat: 'Chief Engineer' | 'Chief Architect'; headline: string; evidence: string; location?: string }
+export interface TopObjection {
+  round: number;
+  seat: 'Chief Engineer' | 'Chief Architect';
+  headline: string;
+  evidence: string;
+  location?: string;
+  /** The Chief Architect's ruling on a Chief Engineer objection, when it arbitrated that round. */
+  ruling?: 'STANDS' | 'MEASURE';
+}

@@ -11,18 +11,26 @@ function details(summary: string, body: string, lang = ''): string {
  * The same replay as Markdown, for places that render it: a GitHub gist, an issue, a pull request comment.
  * Leads with what the council found; every seat reply follows, folded.
  */
-export function renderReplayMarkdown(r: SessionReplay, options: { top?: TopObjection[]; share?: string; replayUrl?: string; rounds?: boolean } = {}): string {
+export interface SeatLines { lineup: string | null; gaps: string[] }
+
+export function renderReplayMarkdown(r: SessionReplay, options: { top?: TopObjection[]; share?: string; replayUrl?: string; rounds?: boolean; seats?: SeatLines } = {}): string {
   const out: string[] = [];
   out.push(`## Council review: ${r.slug}`, '');
   const rounds = r.rounds.filter(x => x.engineer).length;
   const meaning = r.status === 'STALLED' ? ': the seats did not all sign off, so it would not ship as is' : r.status === 'AWAITING_APPROVAL' || r.status === 'APPROVED' ? ': all three seats signed off' : '';
   out.push(`Outcome: **${r.status}** after ${rounds} round${rounds === 1 ? '' : 's'}${meaning} (${r.profile} profile, base \`${r.baseSha.slice(0, 7)}\`).`, '');
+  if (options.seats?.lineup) out.push(`Seats: ${options.seats.lineup}`, '');
+  if (options.seats?.gaps.length) {
+    out.push('**Gaps in this review:**', '');
+    options.seats.gaps.forEach(g => out.push(`- ${g}`));
+    out.push('');
+  }
   if (options.top && options.top.length) {
     out.push('### What the council found', '');
     options.top.forEach((o, i) => {
       out.push(`${i + 1}. **${o.headline.replace(/\*\*/g, '')}**${o.location ? ` (\`${o.location}\`)` : ''}  `);
       if (o.evidence && o.evidence !== o.headline) out.push(`   ${o.evidence.replace(/\n+/g, ' ')}`);
-      out.push(`   _${o.seat}, round ${o.round}_`, '');
+      out.push(`   _${o.seat}, round ${o.round}${o.ruling === 'STANDS' ? '; upheld by the Chief Architect' : o.ruling === 'MEASURE' ? '; the Chief Architect asked for a measurement' : ''}_`, '');
     });
   } else {
     out.push('The council raised no objections.', '');
@@ -35,6 +43,7 @@ export function renderReplayMarkdown(r: SessionReplay, options: { top?: TopObjec
     for (const round of r.rounds) {
       if (round.changes) out.push(details(`Lead PM: what changed in v${round.n}`, round.changes, 'markdown'));
       if (round.engineer) out.push(details(`Chief Engineer, round ${round.n}: ${round.engineer.verdict || 'review'}`, round.engineer.reply, 'markdown'));
+      if (round.tiebreak) out.push(details(`Chief Architect's rulings on round ${round.n}: ${rulingCounts(round.tiebreak.rulings)}`, round.tiebreak.reply, 'markdown'));
       if (round.architect) out.push(details(`Chief Architect on v${round.n}: ${round.architect.verdict || 'review'}`, round.architect.reply, 'markdown'));
       if (round.signoff) out.push(details(`Lead PM sign-off on v${round.n}: ${round.signoff.verdict || ''}`, round.signoff.reply, 'markdown'));
     }
@@ -47,6 +56,13 @@ export function renderReplayMarkdown(r: SessionReplay, options: { top?: TopObjec
   return out.join('\n') + '\n';
 }
 
+/** "2 upheld, 1 overruled" from a round's rulings. */
+export function rulingCounts(rulings: Array<{ ruling: string }>): string {
+  const n = (r: string) => rulings.filter(x => x.ruling === r).length;
+  const parts = [[n('STANDS'), 'upheld'], [n('OVERRULED'), 'overruled'], [n('MEASURE'), 'to measure']].filter(([c]) => c).map(([c, w]) => `${c} ${w}`);
+  return parts.join(', ') || 'no parseable rulings';
+}
+
 /** The hidden line the GitHub Action looks for, so a re-run edits its own comment instead of adding another. */
 export const PR_COMMENT_MARKER = '<!-- open-council-review -->';
 /** GitHub rejects a comment body over 65,536 characters; stay well under it. */
@@ -56,7 +72,7 @@ export const PR_COMMENT_MAX_CHARS = 60_000;
  * The review as one pull request comment: the marker, what the council found, a link to the full replay,
  * and every round folded when it fits. When it does not fit, the rounds are left to the replay.
  */
-export function renderPrComment(r: SessionReplay, options: { top?: TopObjection[]; share?: string; replayUrl?: string; maxChars?: number } = {}): string {
+export function renderPrComment(r: SessionReplay, options: { top?: TopObjection[]; share?: string; replayUrl?: string; maxChars?: number; seats?: SeatLines } = {}): string {
   const max = options.maxChars ?? PR_COMMENT_MAX_CHARS;
   const full = `${PR_COMMENT_MARKER}\n${renderReplayMarkdown(r, options)}`;
   if (full.length <= max) return full;

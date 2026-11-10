@@ -56,7 +56,8 @@ test('reviewConfig plans seats from what is installed, writes nothing, and cuts 
   assert.equal(config.council.max_rounds, 3);
   assert.equal(config.council.tiebreak_round, 2);
   assert.ok(!fs.existsSync(path.join(repo, '.council')), 'a review leaves no config behind');
-  await assert.rejects(lib.reviewConfig(repo, 3, new Set()), /No AI CLI was found on PATH.*claude\.ai\/install\.sh/s);
+  assert.equal(config.council.final_arbitration, false, 'a debate keeps its old shape');
+  await assert.rejects(lib.reviewConfig(repo, 3, new Set()), /No AI CLI is ready to hold a seat.*claude\.ai\/install\.sh/s);
 });
 
 test('the change task quotes the whole diff and tells the seats whether the checkout has it', () => {
@@ -159,7 +160,9 @@ test('council review outside a git repo, or with no AI CLI on PATH, is one clean
   fs.appendFileSync(path.join(repo, 'README.md'), 'x\n');
   const b = spawnSync(process.execPath, [bin, 'review'], { cwd: repo, env, encoding: 'utf8' });
   assert.equal(b.status, 1);
-  assert.match(b.stderr, /No AI CLI was found on PATH/, `stderr was: ${b.stderr}`);
+  assert.match(b.stderr, /No AI CLI is ready to hold a seat/, `stderr was: ${b.stderr}`);
+  assert.match(b.stdout, /✗ Claude\s+not installed/, 'the setup check names each missing CLI');
+  assert.match(b.stdout, /fix: curl -fsSL https:\/\/claude\.ai\/install\.sh \| bash  then  claude auth login/);
   assert.doesNotMatch(b.stderr, /\n\s+at /);
   assert.ok(!fs.existsSync(path.join(repo, '.council')));
 });
@@ -178,12 +181,13 @@ test('a review uses a worktree of its own, so a session already open on the repo
   assert.doesNotMatch(git(ctx.repo, 'worktree', 'list'), /review-worktrees/);
 });
 
-test('--rounds takes 2 to 4 and nothing else', async () => {
+test('--rounds takes 1 to 4 and nothing else', async () => {
   const repo = makeRepo();
   const found = new Set(['claude-code']);
+  assert.equal((await lib.reviewConfig(repo, 1, found)).config.council.max_rounds, 1);
   assert.equal((await lib.reviewConfig(repo, 2, found)).config.council.max_rounds, 2);
   assert.equal((await lib.reviewConfig(repo, 4, found)).config.council.max_rounds, 4);
-  for (const bad of [1, 5, 10, NaN, 2.5]) await assert.rejects(lib.reviewConfig(repo, bad, found), /--rounds takes a whole number from 2 to 4/);
+  for (const bad of [0, 5, 10, NaN, 2.5]) await assert.rejects(lib.reviewConfig(repo, bad, found), /--rounds takes a whole number from 1 to 4/);
 });
 
 test('the old council review <session> still runs the Chief Architect review and says it moved', () => {

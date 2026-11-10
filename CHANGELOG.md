@@ -5,6 +5,19 @@ versions follow [SemVer](https://semver.org/). Get notified of new versions with
 
 ## [Unreleased]
 
+A first review on any setup: it checks which AIs are ready, runs with those, and finishes even when a seat fails.
+
+### Added
+- `council review` checks every AI CLI (Claude, Gemini through `agy`, Grok) before it spends anything: a one-word prompt in an empty folder with no tools. Each line says ready, not installed, not signed in or out of quota, with the command that fixes it. `--no-check` skips it.
+- `council doctor` works outside a set-up repository: it runs the same check and says which seats a review would use.
+- A seat that fails partway (usage limit, lost login, turn limit, error) is dropped for the rest of the review and the next ready AI takes the seat. The review lists each swap under "Gaps in this review" and records the line-up in `seats.json`. When no AI is left for the Chief Architect, the review finishes without its rulings.
+- Reviews say who actually held each seat. A review on Claude alone is labeled single-vendor and names its models.
+
+### Changed
+- `council review` runs one quick round by default: the Lead PM's brief, the Chief Engineer's objections, and the Chief Architect's ruling on each. `--debate` runs the earlier two-round debate. `--rounds` now takes 1 to 4.
+- A seat in `.council/config.yml` whose AI is not ready moves to a ready one for that review only; the file is not changed.
+- The GitHub Action still passes `--rounds 2`, so its reviews are unchanged.
+
 ## [0.3.2] — 2026-11-08
 
 The Gemini seat works again on current Antigravity builds, and every seat treats notes that point outside the repo as unverified claims.

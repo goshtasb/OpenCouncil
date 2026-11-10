@@ -7,7 +7,7 @@ import { getHeadSha, createWorktree, isGitRepo } from '../utils/git.js';
 import { sha256File, sha256String } from '../utils/hash.js';
 import { projectStateDir } from '../utils/paths.js';
 import { buildSystemPrompt } from '../utils/prompts.js';
-import { getAdapter } from '../adapters/registry.js';
+import { runSeat } from './seats.js';
 import { logger } from '../utils/logger.js';
 import { checkAllSignoffs } from './signoff.js';
 import { renderMarkdownToPdf } from '../utils/pdf.js';
@@ -125,16 +125,12 @@ export class CouncilEngine {
     fs.mkdirSync(roundDir, { recursive: true });
     fs.writeFileSync(path.join(roundDir, 'prompt.md'), roundPrompt, 'utf8');
 
-    const engineerConfig = this.config.seats.chief_engineer;
-    const adapter = getAdapter(engineerConfig.provider);
-
     logger.council('CHIEF ENGINEER', `Deliberating round ${roundNum}...`);
     this.sessionManager.setActivity('chief_engineer', 'busy', `Reviewing draft v${roundNum}`);
     let reply: string;
     try {
-      reply = await adapter.runPrompt(roundPrompt, {
+      reply = await runSeat(this.config, this.sessionManager, sessionId, 'chief_engineer', `round ${roundNum}`, roundPrompt, {
         cwd: meta.worktreePath,
-        model: engineerConfig.model,
         permissionMode: 'plan',
         systemPrompt: buildSystemPrompt(this.config, 'chief_engineer', 'member', meta.repoPath),
         timeoutSeconds: this.config.council.round_timeout_seconds

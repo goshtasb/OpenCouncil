@@ -112,6 +112,12 @@ export interface CouncilConfig {
     profile?: 'full' | 'quick';
     /** Consecutive rounds without a drop in open objections before the Chief Architect arbitrates early. */
     no_progress_rounds?: number;
+    /** When a seat fails (an error, a used-up quota, a turn limit), drop its provider and give the seat to the next one in failover_providers instead of ending the run. Off unless set; `council review` turns it on. */
+    seat_failover?: boolean;
+    /** Providers that may take over a failed seat, in order of preference. */
+    failover_providers?: string[];
+    /** When the round budget runs out with objections still open, the Chief Architect rules on them before the run stops. `council review`'s quick mode turns it on. */
+    final_arbitration?: boolean;
   };
   seats: {
     lead_pm: SeatConfig;

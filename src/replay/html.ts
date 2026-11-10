@@ -1,5 +1,6 @@
 import { SessionReplay, TopObjection } from './session-replay.js';
 import { escapeHtml, renderMarkdown } from './markdown.js';
+import { SeatLines, rulingCounts } from './markdown-replay.js';
 
 const SEATS = {
   pm: { name: 'Lead PM', cls: 'pm' },
@@ -50,17 +51,19 @@ footer{margin-top:48px;color:var(--muted);font-size:14px}a{color:var(--eng)}
 `;
 
 /** One self-contained HTML page for a session: no scripts, no external requests, every seat reply rendered from its file. */
-export function renderReplayHtml(r: SessionReplay, options: { note?: string; top?: TopObjection[]; share?: string } = {}): string {
+export function renderReplayHtml(r: SessionReplay, options: { note?: string; top?: TopObjection[]; share?: string; seats?: SeatLines } = {}): string {
   const outcomeClass = r.status === 'DONE' || r.status === 'MERGED' ? 'ok' : r.status === 'BLOCKED' || r.status === 'STALLED' ? 'bad' : 'warn';
   const parts: string[] = [];
   parts.push(`<h1>Council replay: ${escapeHtml(r.slug)}</h1>`);
   parts.push(`<p class="lede">Session <code>${escapeHtml(r.id)}</code>, ${escapeHtml(r.profile)} profile, base commit <code>${escapeHtml(r.baseSha.slice(0, 7))}</code>, ` +
     `round budget ${r.maxRounds}${r.signoffRevisions ? ` plus ${r.signoffRevisions} sign-off revision` : ''}.</p>`);
   parts.push(`<span class="outcome ${outcomeClass}">Outcome: ${escapeHtml(r.status)}</span>`);
+  if (options.seats?.lineup) parts.push(`<p class="lede"><strong>Seats:</strong> ${escapeHtml(options.seats.lineup)}</p>`);
+  if (options.seats?.gaps.length) parts.push(seatBlock('harness', 'gaps in this review', `<ul>${options.seats.gaps.map(g => `<li>${escapeHtml(g)}</li>`).join('')}</ul>`));
   if (options.note) parts.push(`<div class="md">${renderMarkdown(options.note)}</div>`);
   if (options.top && options.top.length) {
     parts.push('<h2>What the council found</h2>' + options.top.map((o, i) =>
-      seatBlock(o.seat === 'Chief Engineer' ? 'eng' : 'arch', `objection ${i + 1}, round ${o.round}${o.location ? ` · ${o.location}` : ''}`,
+      seatBlock(o.seat === 'Chief Engineer' ? 'eng' : 'arch', `objection ${i + 1}, round ${o.round}${o.location ? ` · ${o.location}` : ''}${o.ruling === 'STANDS' ? ' · upheld by the Chief Architect' : o.ruling === 'MEASURE' ? ' · to measure' : ''}`,
         `<p><strong>${renderInline(o.headline)}</strong></p>${o.evidence && o.evidence !== o.headline ? `<p>${renderInline(o.evidence)}</p>` : ''}`)).join(''));
   }
   if (options.share) {
@@ -89,6 +92,7 @@ export function renderReplayHtml(r: SessionReplay, options: { note?: string; top
       const count = typeof round.engineer.openObjections === 'number' ? `, ${round.engineer.openObjections} open objection${round.engineer.openObjections === 1 ? '' : 's'}` : '';
       parts.push(seatBlock('eng', `review of v${round.n}${count}`, renderMarkdown(round.engineer.reply), round.engineer.verdict));
     }
+    if (round.tiebreak) parts.push(seatBlock('arch', `rulings on round ${round.n}: ${rulingCounts(round.tiebreak.rulings)}`, renderMarkdown(round.tiebreak.reply)));
     if (round.architect) parts.push(seatBlock('arch', `sign-off review of v${round.n}`, renderMarkdown(round.architect.reply), round.architect.verdict));
     if (round.signoff) parts.push(seatBlock('pm', `final sign-off on v${round.n}`, renderMarkdown(round.signoff.reply), round.signoff.verdict));
   }

@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ArchitectureReviewResult, CouncilConfig, LeadSignoffResult, RoundVerdict } from '../types.js';
 import { SessionManager, roundDirName } from './session.js';
-import { getAdapter } from '../adapters/registry.js';
+import { runSeat } from './seats.js';
 import { sha256File, sha256String } from '../utils/hash.js';
 import { buildSystemPrompt, protocolLines } from '../utils/prompts.js';
 import { logger } from '../utils/logger.js';
@@ -110,14 +110,12 @@ export class LeadSignoffEngine {
     fs.mkdirSync(signoffDir, { recursive: true });
     fs.writeFileSync(path.join(signoffDir, 'prompt.md'), prompt, 'utf8');
 
-    const pmConfig = this.config.seats.lead_pm;
     logger.council('LEAD PM', `Final sign-off review of v${round}...`);
     this.sessionManager.setActivity('lead_pm', 'busy', `Signing off v${round}`);
     let reply: string;
     try {
-      reply = await getAdapter(pmConfig.provider).runPrompt(prompt, {
+      reply = await runSeat(this.config, this.sessionManager, sessionId, 'lead_pm', `sign-off on v${round}`, prompt, {
         cwd: meta.worktreePath,
-        model: pmConfig.model,
         permissionMode: 'plan',
         systemPrompt: buildSystemPrompt(this.config, 'lead_pm', null, meta.repoPath),
         timeoutSeconds: this.config.council.round_timeout_seconds
