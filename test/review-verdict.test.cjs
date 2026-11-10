@@ -111,12 +111,18 @@ test('an upheld objection blocks even when the Chief Engineer later reports noth
   ]);
   assert.equal(lib.reviewVerdict(quiet).verdict, 'CHANGES REQUESTED');
   assert.equal(lib.reviewVerdict({ ...quiet, status: 'AWAITING_APPROVAL' }).verdict, 'CHANGES REQUESTED');
-  // A MEASURE is not cleared that way either; only a later ruling on the same objection changes it.
+  // A later ruling never weakens an earlier one: nobody measures or changes the code between a review's rounds.
   const measured = replay([
     { n: 1, engineer: { reply: objections('Speedup unproven'), openObjections: 1 }, tiebreak: ruled('MEASURE') },
     { n: 2, engineer: { reply: objections('Speedup unproven'), openObjections: 1 }, tiebreak: ruled('MINOR') }
   ]);
-  assert.equal(lib.reviewVerdict(measured).verdict, 'PASS');
+  assert.deepEqual([lib.reviewVerdict(measured).verdict, lib.reviewVerdict(measured).summary], ['CHANGES REQUESTED', '1 to verify']);
+  const upheld = replay([
+    { n: 1, engineer: { reply: objections('Missing test'), openObjections: 1 }, tiebreak: ruled('STANDS') },
+    { n: 2, engineer: { reply: '1. **Missing test (src/b.js:4).** other', openObjections: 1 }, tiebreak: ruled('MINOR') }
+  ]);
+  // Same headline, different file:line: two objections, and the earlier STANDS still blocks.
+  assert.deepEqual([lib.reviewVerdict(upheld).verdict, lib.reviewVerdict(upheld).stands, lib.reviewVerdict(upheld).minor], ['CHANGES REQUESTED', 1, 1]);
 });
 
 test('the same defect restated in a later round, at the same file:line, is counted once', () => {
@@ -163,4 +169,11 @@ test('two objections in one round with the same headline stay two, so a MINOR on
     const v = lib.reviewVerdict(r);
     assert.deepEqual([v.verdict, v.stands, v.minor], ['CHANGES REQUESTED', 1, 1], order.join(' then '));
   }
+});
+
+test('a declared objection the parser could not read still blocks when the others were read and ruled', () => {
+  const reply = ['VERDICT: SHIP WITH CHANGES', 'OPEN OBJECTIONS: 2', '', '1. **Rename the helper (src/a.js:1).** x', '', 'Also the retry never stops, see src/a.js:9.'].join('\n');
+  const r = replay([{ n: 1, engineer: { reply, openObjections: 2 }, tiebreak: ruled('MINOR') }]);
+  const v = lib.reviewVerdict(r);
+  assert.deepEqual([v.verdict, v.summary], ['CHANGES REQUESTED', '1 objection nobody ruled on; 1 minor note']);
 });

@@ -239,6 +239,9 @@ export const findLocation = (text: string) => LOCATION.exec(text)?.[0];
 type Ruling = 'STANDS' | 'MINOR' | 'OVERRULED' | 'MEASURE';
 interface Judged extends TopObjection { latest: number; final?: Ruling }
 
+const STRENGTH: Record<Ruling, number> = { STANDS: 4, MEASURE: 3, MINOR: 1, OVERRULED: 0 };
+/** The stronger of two rulings on the same objection; no ruling is weaker than any ruling. */
+const stronger = (a?: Ruling, b?: Ruling): Ruling | undefined => (!a ? b : !b ? a : STRENGTH[a] >= STRENGTH[b] ? a : b);
 const keyOf = (headline: string) => headline.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 60);
 const asRuling = (r?: string): Ruling | undefined => {
   const u = String(r || '').toUpperCase();
@@ -248,8 +251,8 @@ const asRuling = (r?: string): Ruling | undefined => {
 /**
  * Every objection the review raised, once, with the last ruling the Chief Architect gave it and where it stands now:
  * - blocking: upheld (STANDS), sent to be measured (MEASURE), or still open in the last round with no ruling at all.
- *   A review never changes the code between rounds, so an upheld objection blocks until a later ruling on it says
- *   otherwise. The Chief Engineer going quiet about it, or the seats signing off the brief, does not clear it.
+ *   A review never changes the code between rounds, so an upheld objection keeps blocking: a later ruling never weakens
+ *   an earlier one, and the Chief Engineer going quiet about it, or the seats signing off the brief, does not clear it.
  * - minor: ruled MINOR, or an advisory concern in the Chief Architect's latest review. Right, but it does not block.
  * - resolved: never upheld, and settled since: the Chief Engineer did not raise it again, ended with no open objection,
  *   or every seat signed off. Shown, never counted.
@@ -279,14 +282,17 @@ function judgedObjections(replay: SessionReplay): { kept: Judged[]; overruled: n
     });
     for (const o of parsed) {
       const ruling = asRuling(rulings.find(r => r.id === o.n)?.ruling);
-      // A headline matches an earlier round's objection, never another one in the same round: two objections that
-      // happen to share a headline stay two, each with its own ruling.
+      // A headline matches an earlier round's objection when the two do not cite different file:lines, and never another
+      // objection in the same round: two objections that share a headline but nothing else stay two.
+      const location = findLocation(`${o.headline} ${o.evidence}`);
       let key = keyOf(o.headline);
-      if (byKey.get(key)?.latest === round.n) key = `${key}#${round.n}.${o.n}`;
+      const match = byKey.get(key);
+      if (match && (match.latest === round.n || (match.location && location && match.location !== location))) key = `${key}#${round.n}.${o.n}`;
       const earlier = byKey.get(key);
+      // A later round never weakens a ruling: a review does not change the code, so what was upheld stays upheld.
       byKey.set(key, {
         round: earlier ? earlier.round : round.n, seat: 'Chief Engineer', headline: earlier ? earlier.headline : o.headline, evidence: o.evidence,
-        location: findLocation(`${o.headline} ${o.evidence}`) || earlier?.location, latest: round.n, final: ruling || earlier?.final
+        location: location || earlier?.location, latest: round.n, final: stronger(ruling, earlier?.final)
       });
     }
     // Rulings on objections the parser could not read still count. Nothing can later clear one it cannot name, so an
@@ -298,8 +304,10 @@ function judgedObjections(replay: SessionReplay): { kept: Judged[]; overruled: n
     }
     if (round === last && !cleared) {
       overruled = rulings.filter(r => asRuling(r.ruling) === 'OVERRULED').length;
-      // An open count with nothing readable behind it still blocks.
-      if (!parsed.length && !rulings.length) orphans.unruled += open === 999 ? 1 : open;
+      // Objections the Chief Engineer declared but nobody can read or ruled on still block: an open count with nothing
+      // readable behind it, or one higher than the objections read and ruled.
+      const accounted = new Set([...parsed.map(o => o.n), ...rulings.map(r => r.id)]).size;
+      if (open === 999) { if (!accounted) orphans.unruled += 1; } else if (open > accounted) orphans.unruled += open - accounted;
     }
   }
   const kept: Judged[] = [];
