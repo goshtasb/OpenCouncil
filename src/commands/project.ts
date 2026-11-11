@@ -195,10 +195,16 @@ export function registerProjectCommands(program: Command, ctx: CliContext): void
   program
     .command('status [session]')
     .description('Show session status (or list sessions)')
-    .action(action((sessionId?: string) => {
+    .option('--json', 'Print the session list as a JSON array (session, status)')
+    .action(action((sessionId?: string, options?: { json?: boolean }) => {
       const sessions = new SessionManager();
       if (!sessionId) {
         const ids = sessions.listSessions();
+        if (options?.json) {
+          const rows = ids.map((id) => ({ session: id, status: sessions.getStatus(id).status }));
+          console.log(JSON.stringify(rows, null, 2));
+          return;
+        }
         if (ids.length === 0) console.log('No sessions.');
         for (const id of ids) console.log(`${id.padEnd(48)} ${sessions.getStatus(id).status}`);
         return;
