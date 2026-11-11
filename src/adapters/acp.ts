@@ -8,6 +8,8 @@
 // What the agent does WITHOUT asking stays the agent's own business, exactly as with happy-agent's
 // foreign harnesses; the Mac check in docs/spikes/happy-agent.md tests that part against real agy.
 import { spawn, ChildProcess } from 'child_process';
+import * as fs from 'fs';
+import * as path from 'path';
 import { AgentAdapter, AgentRunOptions, requireOutput, withPreamble } from './base.js';
 
 export interface AcpAdapterOptions {
@@ -17,6 +19,11 @@ export interface AcpAdapterOptions {
   /** ACP mode values for each OpenCouncil permission mode. */
   modes?: { plan: string; exec: string; auto: string };
   env?: Record<string, string>;
+  /**
+   * Probe only: offer the agent our filesystem (fs/read_text_file, fs/write_text_file), limited to
+   * the seat's cwd. Never honoured for read-only seats. Off by default.
+   */
+  clientFs?: boolean;
 }
 
 /** What the run saw, beyond the answer. Exposed for tests and for seats.json. */
@@ -30,6 +37,10 @@ export interface AcpRunReport {
   commands?: string[];
   /** Tool calls the agent reported running on its own, without asking. */
   toolCalls: Array<{ title: string; kind?: string; status?: string }>;
+  /** Files the agent read or wrote through the client's filesystem (clientFs only). */
+  fsCalls: Array<{ method: string; path: string; ok: boolean }>;
+  /** Last part of the agent's stderr. */
+  stderrTail?: string;
 }
 
 type Pending = { resolve: (v: any) => void; reject: (e: any) => void };
@@ -57,7 +68,9 @@ export class AcpAdapter implements AgentAdapter {
     const readOnly = options.permissionMode === 'plan' || options.permissionMode === undefined;
     const modes = this.opts.modes || { plan: 'plan', exec: 'accept-edits', auto: 'auto' };
     const wantedMode = readOnly ? modes.plan : options.permissionMode === 'exec' ? modes.exec : modes.auto;
-    const report: AcpRunReport = { permissionAsks: [], toolCalls: [] };
+    const report: AcpRunReport = { permissionAsks: [], toolCalls: [], fsCalls: [] };
+    const clientFs = !!this.opts.clientFs && !readOnly;
+    const root = fs.realpathSync(options.cwd || process.cwd());
     this.lastReport = report;
 
     const child = spawn(this.opts.command, this.opts.args, {
@@ -68,7 +81,7 @@ export class AcpAdapter implements AgentAdapter {
     const conn = new JsonRpcConnection(child);
     let answer = '';
     let stderrTail = '';
-    child.stderr!.on('data', d => { stderrTail = (stderrTail + d.toString()).slice(-2000); });
+    child.stderr!.on('data', d => { stderrTail = (stderrTail + d.toString()).slice(-2000); report.stderrTail = stderrTail; });
 
     conn.onRequest = async (method, params) => {
       if (method === 'session/request_permission') {
@@ -82,7 +95,22 @@ export class AcpAdapter implements AgentAdapter {
         report.permissionAsks.push({ title, kind, answer: chosen?.kind || 'cancelled' });
         return chosen ? { outcome: { outcome: 'selected', optionId: chosen.optionId } } : { outcome: { outcome: 'cancelled' } };
       }
-      // We advertise no fs or terminal capability, so anything else is refused.
+      if (clientFs && (method === 'fs/write_text_file' || method === 'fs/read_text_file')) {
+        const target = path.resolve(root, String(params?.path || ''));
+        const real = fs.existsSync(target) ? fs.realpathSync(target) : path.join(fs.realpathSync(path.dirname(target)), path.basename(target));
+        const inside = real === root || real.startsWith(root + path.sep);
+        report.fsCalls.push({ method, path: real, ok: inside });
+        if (!inside) throw { code: -32602, message: `path is outside the workspace: ${real}` };
+        if (method === 'fs/write_text_file') { fs.writeFileSync(real, String(params?.content ?? '')); return null; }
+        let content = fs.readFileSync(real, 'utf8');
+        if (params?.line || params?.limit) {
+          const lines = content.split('\n');
+          const start = Math.max(0, (params.line || 1) - 1);
+          content = lines.slice(start, params.limit ? start + params.limit : undefined).join('\n');
+        }
+        return { content };
+      }
+      // We advertise no fs (unless clientFs) and no terminal capability, so anything else is refused.
       throw { code: -32601, message: `client does not support ${method}` };
     };
     conn.onNotification = (method, params) => {
@@ -101,7 +129,7 @@ export class AcpAdapter implements AgentAdapter {
     try {
       await conn.request('initialize', {
         protocolVersion: 1,
-        clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
+        clientCapabilities: { fs: { readTextFile: clientFs, writeTextFile: clientFs }, terminal: false },
       });
       const session = await conn.request('session/new', { cwd: options.cwd, mcpServers: [] });
       const sessionId: string = session.sessionId;

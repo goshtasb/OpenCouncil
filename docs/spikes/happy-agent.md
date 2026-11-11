@@ -56,7 +56,7 @@ Things learned on the way:
 ## Still to check on a Mac with agy signed in
 
 ```sh
-cd ~ && { [ -d oc-spike ] || git clone -q https://github.com/goshtasb/OpenCouncil.git oc-spike; } && cd oc-spike && git fetch -q origin spike/happy-agent-seat && git checkout -q FETCH_HEAD && npm ci --silent && npm run build --silent && node scripts/spike/agy-readonly-probe.cjs > ~/Desktop/agy-readonly-probe.txt 2>&1; tail -n 4 ~/Desktop/agy-readonly-probe.txt
+cd ~ && { [ -d oc-spike ] || git clone -q https://github.com/goshtasb/OpenCouncil.git oc-spike; } && cd oc-spike && git fetch -q origin spike/happy-agent-seat && git checkout -q FETCH_HEAD && npm ci --silent && npm run build --silent && node scripts/spike/agy-readonly-probe.cjs > ~/Desktop/agy-readonly-probe.txt 2>&1; sed -n '/^B\. /,$p' ~/Desktop/agy-readonly-probe.txt
 ```
 
 Section B of the report answers #46 for the ACP path; section A reproduces it on today's path;

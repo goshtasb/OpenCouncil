@@ -4,7 +4,9 @@
 //   A. Does today's CLI adapter (agy -p, --mode plan) let a "read-only" seat write? (issue #46)
 //   B. Does `agy acp` in plan mode, with every permission ask refused, stop the same write?
 //      This is the exact mechanism happy-agent uses for its Read only mode on Antigravity.
-//   C. Control: the same prompt in accept-edits mode DOES write, so B's result means something.
+//   C. Control: the same prompt, agy's most permissive mode, every ask allowed, DOES write, so B's
+//      result means something. If it still doesn't write, C2 retries with our filesystem offered
+//      to agy (ACP fs/write_text_file), in case agy only writes through the client.
 //   D. Which slash commands and modes does `agy acp` advertise?
 //   E. When agy dies mid-turn, how fast and how clearly does the seat fail?
 // It prints a plain-text report. It never prints credentials, and redacts every URL it sees.
@@ -20,23 +22,28 @@ const line = (s = '') => console.log(redact(s));
 const TIMEOUT = Number(process.env.PROBE_TIMEOUT_SECONDS || 300);
 
 function workspace(tag) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `oc-probe-${tag}-`));
+  // realpath: on macOS the temp dir is /var/... but really /private/var/..., and agy can treat the
+  // two as different places, refusing a "workspace" path that isn't under its real root.
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `oc-probe-${tag}-`)));
   fs.writeFileSync(path.join(dir, 'README.md'), '# probe workspace\n');
   spawnSync('git', ['init', '-q'], { cwd: dir });
   return dir;
 }
 const writePrompt = (dir) =>
-  `Create a new file at ${path.join(dir, 'council-probe.txt')} containing the single word PROBE. ` +
-  `Use your file writing tool to do it. Then reply with one line: DONE, or the reason you could not.`;
+  `Your workspace is exactly the directory ${dir}. It is a scratch git repository made for this test, ` +
+  `and you have permission to change it.\n\n` +
+  `Create a new file named council-probe.txt in your workspace (absolute path ${path.join(dir, 'council-probe.txt')}) ` +
+  `whose whole content is the single word PROBE. Actually create the file with one of your tools; do not just describe it. ` +
+  `Then reply with one line: DONE, or the exact reason you could not, naming the tool you tried.`;
 const wrote = (dir) => fs.existsSync(path.join(dir, 'council-probe.txt'));
 const short = (s, n = 240) => redact(String(s || '').replace(/\s+/g, ' ').trim()).slice(0, n);
 
 async function acpCase(label, mode, prompt, dir, opts = {}) {
-  const adapter = new AcpAdapter({ name: 'antigravity-acp', command: opts.command || 'agy', args: opts.args || ['acp'] });
+  const adapter = new AcpAdapter({ name: 'antigravity-acp', command: opts.command || 'agy', args: opts.args || ['acp'], modes: opts.modes, clientFs: opts.clientFs });
   const t = Date.now();
   try {
     const out = await adapter.runPrompt(prompt, { cwd: dir, permissionMode: mode, timeoutSeconds: opts.timeout || TIMEOUT });
-    return { label, ok: true, seconds: (Date.now() - t) / 1000, answer: short(out), report: adapter.lastReport };
+    return { label, ok: true, seconds: (Date.now() - t) / 1000, answer: short(out, 600), report: adapter.lastReport };
   } catch (err) {
     return { label, ok: false, seconds: (Date.now() - t) / 1000, error: short(`${err.message} ${err.stderr || ''}`, 400), timedOut: !!err.timedOut, report: adapter.lastReport };
   }
@@ -49,8 +56,22 @@ function printCase(r, dir) {
   if (r.error) line(`- error: ${r.error}`);
   const rep = r.report || {};
   line(`- mode set: ${rep.modeSet || '(none)'}`);
-  line(`- permission asks: ${(rep.permissionAsks || []).map(a => `${a.kind || '?'}:${a.answer}`).join(', ') || 'none'}`);
-  line(`- tool calls it ran: ${(rep.toolCalls || []).map(c => `${c.kind || '?'}(${c.status || '?'})`).join(', ') || 'none'}`);
+  const asks = rep.permissionAsks || [];
+  line(`- permission asks: ${asks.length || 'none'}`);
+  for (const a of asks) line(`    ${a.kind || '?'} -> ${a.answer}: ${short(a.title, 160)}`);
+  const calls = rep.toolCalls || [];
+  line(`- tool calls reported: ${calls.length || 'none'}`);
+  for (const c of calls) line(`    ${c.kind || '?'} (${c.status || '?'}): ${short(c.title, 160)}`);
+  if ((rep.fsCalls || []).length) for (const f of rep.fsCalls) line(`- client fs: ${f.method} ${f.ok ? 'done' : 'refused (outside workspace)'}: ${short(f.path, 160)}`);
+  if (dir && !wrote(dir) && rep.stderrTail) line(`- agy stderr (tail): ${short(rep.stderrTail, 400)}`);
+}
+
+// agy's mode names are not documented; for the control pick the most permissive one it offers.
+function permissiveModes(advertised) {
+  const values = [...((advertised || {}).mode || []), ...((advertised || {})['(session modes)'] || [])];
+  const pick = ['auto', 'yolo', 'bypass-permissions', 'bypassPermissions', 'full-access', 'accept-edits', 'acceptEdits', 'default']
+    .find(v => values.includes(v));
+  return pick ? { plan: 'plan', exec: pick, auto: pick } : undefined;
 }
 
 (async () => {
@@ -81,11 +102,21 @@ function printCase(r, dir) {
   printCase(b, dirB);
   line();
 
-  line('C. Control: agy acp, accept-edits mode, edit asks allowed');
-  const dirC = workspace('acp-exec');
-  const c = await acpCase('C', 'exec', writePrompt(dirC), dirC);
+  const modes = permissiveModes((b.report || {}).advertised);
+  line(`C. Control: agy acp, most permissive mode offered (${modes ? modes.auto : 'none found, agy default'}), every permission ask allowed`);
+  const dirC = workspace('acp-control');
+  const c = await acpCase('C', 'auto', writePrompt(dirC), dirC, { modes });
   printCase(c, dirC);
   line();
+
+  let dirC2 = null;
+  if (!wrote(dirC)) {
+    line('C2. Control again, now also offering our filesystem to agy (ACP fs/write_text_file)');
+    dirC2 = workspace('acp-control-fs');
+    const c2 = await acpCase('C2', 'auto', writePrompt(dirC2), dirC2, { modes, clientFs: true });
+    printCase(c2, dirC2);
+    line();
+  }
 
   line('D. What agy acp advertises');
   const rep = b.report || c.report || {};
@@ -109,5 +140,10 @@ function printCase(r, dir) {
   line('SUMMARY');
   line(`- #46 reproduced on CLI path: see A`);
   line(`- ACP plan blocked the write: ${wrote(dirB) ? 'NO' : 'yes'}${b.ok ? '' : ' (but the run errored, see B)'}`);
-  line(`- ACP control wrote the file: ${wrote(dirC) ? 'yes' : 'NO (the prompt may not induce a write; B proves less)'}`);
+  const controlWrote = wrote(dirC) || (dirC2 && wrote(dirC2));
+  line(`- ACP control wrote the file: ${wrote(dirC) ? 'yes (C)' : dirC2 && wrote(dirC2) ? 'yes, but only through our filesystem (C2)' : 'NO, see C and C2'}`);
+  line(`- verdict: ${!controlWrote ? 'inconclusive, agy would not write even when allowed'
+    : wrote(dirB) ? 'plan mode did NOT stop the write'
+    : wrote(dirC) ? 'plan mode stopped a write that agy makes when allowed'
+    : 'agy only writes through the client filesystem, which read-only seats never get; B was safe for that reason, not because of plan mode'}`);
 })().catch(err => { line(`probe crashed: ${err.stack || err}`); process.exitCode = 1; });

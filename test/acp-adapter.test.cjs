@@ -65,3 +65,18 @@ test('acp seat: a missing agent command is a clear error', async () => {
   assert.strictEqual(await adapter.isAvailable(), false);
   await assert.rejects(adapter.runPrompt('x', { cwd: os.tmpdir(), permissionMode: 'plan', timeoutSeconds: 5 }), /ENOENT/);
 });
+
+test('acp seat: clientFs lets an allowed seat write through our fs, only inside its cwd', async () => {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'acp-seat-')));
+  const adapter = new AcpAdapter({ name: 'fake-acp', command: process.execPath, args: [FAKE], env: { FAKE_ACP_CLIENT_FS: '1' }, clientFs: true });
+  assert.strictEqual(await adapter.runPrompt('SCENARIO:write', { cwd: dir, permissionMode: 'auto', timeoutSeconds: 30 }), 'WROTE');
+  assert.strictEqual(fs.readFileSync(path.join(dir, 'fake-write.txt'), 'utf8'), 'PROBE');
+  assert.deepStrictEqual(adapter.lastReport.fsCalls.map(f => [f.method, f.ok]), [['fs/write_text_file', true]]);
+});
+
+test('acp seat: clientFs is never offered to a read-only seat', async () => {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'acp-seat-')));
+  const adapter = new AcpAdapter({ name: 'fake-acp', command: process.execPath, args: [FAKE], env: { FAKE_ACP_CLIENT_FS: '1' }, clientFs: true });
+  assert.strictEqual(await adapter.runPrompt('SCENARIO:write', { cwd: dir, permissionMode: 'plan', timeoutSeconds: 30 }), 'NO FS');
+  assert.strictEqual(fs.existsSync(path.join(dir, 'fake-write.txt')), false);
+});

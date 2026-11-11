@@ -8,6 +8,9 @@
 //                   if the client allows, then answers WROTE or DENIED.
 //   SCENARIO:die    streams one chunk, then exits with code 3 mid-turn (a seat dying mid-run).
 //   SCENARIO:hang   never answers (for timeout tests).
+//   council-probe.txt  (the Mac probe's prompt) behaves like SCENARIO:write on that file name.
+//   With FAKE_ACP_CLIENT_FS=1 and a client that offers fs.writeTextFile, a write goes through the
+//   client's fs/write_text_file instead of the agent's own tool, with no permission ask.
 //   anything else   answers "fake answer: <first 40 chars of the prompt>".
 // It logs every config option the client sets to $FAKE_ACP_LOG (one JSON line each), if set.
 const fs = require('fs');
@@ -16,6 +19,7 @@ const path = require('path');
 let nextId = 1000;
 const pending = new Map();
 const sessions = new Map();
+let clientCaps = {};
 const log = (entry) => { if (process.env.FAKE_ACP_LOG) fs.appendFileSync(process.env.FAKE_ACP_LOG, JSON.stringify(entry) + '\n'); };
 const send = (msg) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...msg }) + '\n');
 const request = (method, params) => new Promise((resolve, reject) => {
@@ -35,7 +39,9 @@ async function onPrompt(id, params) {
   const s = sessions.get(params.sessionId);
   const text = (params.prompt || []).filter(b => b.type === 'text').map(b => b.text).join('\n');
   // A client may replay earlier turns into the prompt, so only the last scenario word counts.
-  const scenario = (text.match(/SCENARIO:(\w+)/g) || []).pop() || '';
+  let scenario = (text.match(/SCENARIO:(\w+)/g) || []).pop() || '';
+  const fileName = /council-probe\.txt/.test(text) && !scenario ? 'council-probe.txt' : 'fake-write.txt';
+  if (fileName === 'council-probe.txt') scenario = 'SCENARIO:write';
   log({ promptChars: text.length, scenario, mode: s.mode });
   if (scenario === 'SCENARIO:die') {
     chunk(params.sessionId, 'starting work...');
@@ -44,7 +50,18 @@ async function onPrompt(id, params) {
   }
   if (scenario === 'SCENARIO:hang' || /3000 word essay/.test(text)) return;
   if (scenario === 'SCENARIO:write') {
-    const target = path.join(s.cwd, 'fake-write.txt');
+    const target = path.join(s.cwd, fileName);
+    if (process.env.FAKE_ACP_CLIENT_FS === '1') {
+      if (!clientCaps?.fs?.writeTextFile) {
+        chunk(params.sessionId, 'NO FS');
+      } else {
+        let ok = true;
+        try { await request('fs/write_text_file', { sessionId: params.sessionId, path: target, content: 'PROBE' }); } catch { ok = false; }
+        chunk(params.sessionId, ok ? 'WROTE' : 'DENIED');
+      }
+      send({ id, result: { stopReason: 'end_turn' } });
+      return;
+    }
     const toolCallId = `call-${nextId}`;
     update(params.sessionId, { sessionUpdate: 'tool_call', toolCallId, title: `Write ${target}`, kind: 'edit', status: 'pending', locations: [{ path: target }] });
     let answer;
@@ -81,6 +98,7 @@ function onMessage(msg) {
   const { id, method, params } = msg;
   switch (method) {
     case 'initialize':
+      clientCaps = params?.clientCapabilities || {};
       return send({ id, result: { protocolVersion: 1, agentCapabilities: { loadSession: false, promptCapabilities: {}, mcpCapabilities: { http: false, sse: false } }, authMethods: [] } });
     case 'session/new': {
       const sessionId = `fake-${sessions.size + 1}`;
