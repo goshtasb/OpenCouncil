@@ -48,7 +48,7 @@ export class SeatUnavailableError extends Error {
 
 export const SEAT_LABELS: Record<SeatName, string> = { lead_pm: 'Lead PM', chief_engineer: 'Chief Engineer', chief_architect: 'Chief Architect' };
 
-const VENDORS: Record<string, string> = { 'claude-code': 'Claude', antigravity: 'Gemini', 'gemini-cli': 'Gemini', 'grok-cli': 'Grok', ollama: 'Ollama' };
+const VENDORS: Record<string, string> = { 'claude-code': 'Claude', antigravity: 'Gemini', 'antigravity-acp': 'Gemini', 'gemini-cli': 'Gemini', 'grok-cli': 'Grok', ollama: 'Ollama' };
 
 /** The company behind a provider, for "Claude, Gemini and Grok". Unknown providers are their own vendor. */
 export const vendorOf = (provider: string) => VENDORS[provider] || provider;
