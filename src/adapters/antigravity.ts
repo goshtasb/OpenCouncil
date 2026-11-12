@@ -1,5 +1,7 @@
 import execa from 'execa';
 import { AgentAdapter, AgentRunOptions, requireOutput, withPreamble } from './base.js';
+import { AcpAdapter, AcpConfigOption, AcpPermissionAsk, AcpStartError } from './acp.js';
+import { isReadOnlyCommand } from './readonly-command.js';
 
 /** The model `council init` writes for an Antigravity seat. `agy models` lists what the installed CLI offers. */
 export const ANTIGRAVITY_DEFAULT_MODEL = 'gemini-4-argon-high';
@@ -41,7 +43,67 @@ export function parseUnavailableModel(output: string): string[] | null {
   return entries.map(line => line.trim());
 }
 
+const key = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+/**
+ * Maps a seat's model to the config options `agy acp` takes. The CLI names a model with its thinking
+ * level ("gemini-4-argon-high", or the display name "Gemini 4 Argon (High)"); over ACP agy offers the
+ * model ("gemini-4-argon") and the level ("thought_level": "high") as two options. Names are compared
+ * ignoring case and punctuation, so "Claude Opus 5.5 (High)" finds "claude-opus-5-5". Throws an
+ * AntigravityModelError, listing what agy offers, for a model it does not offer.
+ */
+export function acpModelConfig(requested: string | undefined, advertised: AcpConfigOption[]): Array<{ configId: string; value: string }> {
+  if (!requested) return [];
+  const modelOption = advertised.find(o => o.id === 'model') || advertised.find(o => o.category === 'model');
+  if (!modelOption) {
+    console.log(`[HARNESS] antigravity offers no model option over ACP; "${requested}" cannot be set, so agy's default model runs.`);
+    return [];
+  }
+  const exact = modelOption.values.find(v => key(v) === key(requested));
+  if (exact) return [{ configId: modelOption.id, value: exact }];
+  const levelOption = advertised.find(o => o.id === 'thought_level') || advertised.find(o => o.category === 'thought_level');
+  const m = /^(.*)-(low|medium|high)$/.exec(key(requested));
+  const base = m && modelOption.values.find(v => key(v) === m[1]);
+  if (m && base) {
+    const level = levelOption?.values.find(v => key(v) === m[2]);
+    return [{ configId: modelOption.id, value: base }, ...(levelOption && level ? [{ configId: levelOption.id, value: level }] : [])];
+  }
+  throw new AntigravityModelError(requested, modelOption.values);
+}
+
+/**
+ * What a read-only seat may say yes to when agy asks: reading and searching, and shell commands that
+ * only read (see isReadOnlyCommand). Edits, deletes, moves, mode switches, fetches and every other
+ * command are refused. The no-tool seat is refused everything.
+ */
+export function readOnlyPolicy(ask: AcpPermissionAsk, options: AgentRunOptions): boolean {
+  if (options.permissionMode !== 'plan') return false;
+  if (ask.kind === 'read' || ask.kind === 'search' || ask.kind === 'think') return true;
+  return ask.kind === 'execute' && isReadOnlyCommand(ask.command ?? ask.title);
+}
+
+/**
+ * agy answers with its own notice, as if it were the reply, when the subscription's quota is used
+ * up ("Individual quota reached. Please upgrade your subscription..."). That is not a seat's answer.
+ * Only a short reply counts, so a review that quotes the notice is still a review.
+ */
+export function isQuotaNotice(text: string): boolean {
+  const t = text.trim();
+  return t.length > 0 && t.length < 400 && /quota (reached|exceeded|exhausted)|upgrade your subscription to increase your limits/i.test(t);
+}
+
 // Google Antigravity CLI (`agy`), the successor client for Gemini subscriptions.
+//
+// Read-only seats (plan, and the no-tool seat) run over `agy acp` (issue #46). On the CLI path agy
+// ignores `--mode plan` whenever `--disable-slash-commands` is set (it says so on stderr), and plan
+// seats also had `--dangerously-skip-permissions`, so a "read-only" seat could write: on a real agy
+// it created a file it was told to create. Over ACP the seat runs in agy's plan mode and every write
+// agy asks for is refused; the same prompt that wrote on the CLI path wrote nothing there, while the
+// same prompt in agy's auto mode did write (so the prompt really asks for a write). Exec and auto
+// seats keep the CLI path unchanged.
+//
+// Two side effects of agy's plan mode, both outside the workspace: it may save its plan as
+// implementation_plan.md under ~/.gemini/antigravity-cli/brain, and it keeps its own session state there.
 export class AntigravityAdapter implements AgentAdapter {
   readonly name = 'antigravity';
   // Verified otherwise: in plan mode without approvals `agy` still reads workspace files, so a seat
@@ -58,6 +120,41 @@ export class AntigravityAdapter implements AgentAdapter {
   }
 
   async runPrompt(prompt: string, options: AgentRunOptions): Promise<string> {
+    const out = options.permissionMode === 'plan' || options.permissionMode === undefined
+      ? await this.runReadOnly(prompt, options)
+      : await this.runCli(prompt, options);
+    if (isQuotaNotice(out)) throw new Error(`antigravity hit its usage limit: agy answered "${out.trim().slice(0, 200)}"`);
+    return out;
+  }
+
+  private async runReadOnly(prompt: string, options: AgentRunOptions): Promise<string> {
+    const workspaceNote = `Your workspace is exactly the directory ${options.cwd}. Only read files inside it, using absolute paths under it.`;
+    const runOn = (model: string | undefined) => new AcpAdapter({
+      name: this.name,
+      command: 'agy',
+      args: ['acp'],
+      configFor: advertised => acpModelConfig(model, advertised),
+      permissionPolicy: readOnlyPolicy,
+    }).runPrompt(`${workspaceNote}\n\n${prompt}`, options);
+    try {
+      try {
+        return await runOn(options.model);
+      } catch (err) {
+        if (!(err instanceof AntigravityModelError) || !options.model || !RETIRED_ANTIGRAVITY_MODELS.has(options.model)) throw err;
+        console.log(`[HARNESS] antigravity no longer offers "${options.model}"; retrying on "${ANTIGRAVITY_DEFAULT_MODEL}". Set that model in .council/config.yml to skip this retry.`);
+        return await runOn(ANTIGRAVITY_DEFAULT_MODEL);
+      }
+    } catch (err) {
+      // Never fall back to the CLI path: there, plan mode is not enforced.
+      if (err instanceof AcpStartError) {
+        throw new Error(`antigravity: read-only seats run over \`agy acp\` (agy 1.5.5 or newer), and it did not start. ` +
+          `Update agy, or check that \`agy\` is signed in. ${err.message}`);
+      }
+      throw err;
+    }
+  }
+
+  private async runCli(prompt: string, options: AgentRunOptions): Promise<string> {
     const timeoutSeconds = options.timeoutSeconds || 900;
     // agy only accepts the prompt as an argument (not on stdin).
     // agy does not treat its cwd as the workspace (it searches other directories), so scope it explicitly.
@@ -70,16 +167,11 @@ export class AntigravityAdapter implements AgentAdapter {
       // Prompts carry model-written text; never expand it as slash commands or skills.
       '--disable-slash-commands'
     ];
+    // Only exec and auto seats come here; read-only seats run over ACP (runReadOnly).
     if (options.permissionMode === 'auto') {
       args.push('--dangerously-skip-permissions');
-    } else if (options.permissionMode === 'exec') {
-      args.push('--mode', 'accept-edits');
-    } else if (options.permissionMode === 'plan') {
-      // Plan mode blocks edits; headless mode cannot prompt, so reads must be pre-approved.
-      args.push('--mode', 'plan', '--dangerously-skip-permissions');
     } else {
-      // No-tool seat: plan mode without approvals, so every tool call is denied.
-      args.push('--mode', 'plan');
+      args.push('--mode', 'accept-edits');
     }
     const baseArgs = args;
     const argsFor = (model?: string) => [...baseArgs, ...(model ? ['--model', model] : []), ...(options.appendArgs || [])];
