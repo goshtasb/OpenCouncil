@@ -38,19 +38,25 @@ const writePrompt = (dir) =>
 const wrote = (dir) => fs.existsSync(path.join(dir, 'council-probe.txt'));
 const short = (s, n = 240) => redact(String(s || '').replace(/\s+/g, ' ').trim()).slice(0, n);
 
+// An answer that is agy's quota or rate-limit notice means the model never ran: no result, not a block.
+const isQuota = (s) => /quota (reached|exceeded|exhausted)|upgrade your subscription|resource_exhausted|rate limit|too many requests|capacity_exhausted/i.test(String(s || ''));
+let MODEL; // set by the preflight: undefined means agy's default model
+
 async function acpCase(label, mode, prompt, dir, opts = {}) {
   const adapter = new AcpAdapter({ name: 'antigravity-acp', command: opts.command || 'agy', args: opts.args || ['acp'], modes: opts.modes, clientFs: opts.clientFs });
   const t = Date.now();
   try {
-    const out = await adapter.runPrompt(prompt, { cwd: dir, permissionMode: mode, timeoutSeconds: opts.timeout || TIMEOUT });
+    const out = await adapter.runPrompt(prompt, { cwd: dir, permissionMode: mode, timeoutSeconds: opts.timeout || TIMEOUT, model: MODEL });
+    if (isQuota(out)) return { label, ok: false, quota: true, seconds: (Date.now() - t) / 1000, error: short(out), report: adapter.lastReport };
     return { label, ok: true, seconds: (Date.now() - t) / 1000, answer: short(out, 600), report: adapter.lastReport };
   } catch (err) {
-    return { label, ok: false, seconds: (Date.now() - t) / 1000, error: short(`${err.message} ${err.stderr || ''}`, 400), timedOut: !!err.timedOut, report: adapter.lastReport };
+    const msg = `${err.message} ${err.stderr || ''}`;
+    return { label, ok: false, quota: isQuota(msg), seconds: (Date.now() - t) / 1000, error: short(msg, 400), timedOut: !!err.timedOut, report: adapter.lastReport };
   }
 }
 
 function printCase(r, dir) {
-  line(`- result: ${r.ok ? 'answered' : r.timedOut ? 'TIMED OUT' : 'ERROR'} in ${r.seconds.toFixed(1)}s`);
+  line(`- result: ${r.ok ? 'answered' : r.quota ? 'NO RESULT (agy quota or rate limit, the model never ran)' : r.timedOut ? 'TIMED OUT' : 'ERROR'} in ${r.seconds.toFixed(1)}s`);
   if (dir) line(`- file written: ${wrote(dir) ? 'YES' : 'no'}`);
   if (r.answer) line(`- answer: ${r.answer}`);
   if (r.error) line(`- error: ${r.error}`);
@@ -82,15 +88,42 @@ function permissiveModes(advertised) {
   line(`agy --version: ${version}`);
   line();
 
+  // Preflight: find a model that answers at all. agy's plan mode is agy's own tool layer, not the
+  // model's, so any model agy offers tests #46. Gemini models share one quota pool.
+  line('P. Preflight: which agy model answers right now');
+  const candidates = (process.env.PROBE_MODELS || 'default,claude-sonnet-5-5,gpt-oss-120b-medium').split(',').map(m => m.trim()).filter(Boolean);
+  let found = false;
+  let advertisedAtPreflight;
+  for (const m of candidates) {
+    MODEL = m === 'default' ? undefined : m;
+    const dirP = workspace('preflight');
+    const r = await acpCase('P', 'plan', 'Reply with the single word OK and nothing else.', dirP, { timeout: 90 });
+    advertisedAtPreflight = advertisedAtPreflight || (r.report || {}).advertised;
+    const offered = MODEL === undefined || (((r.report || {}).advertised || {}).model || []).includes(MODEL);
+    line(`- ${m}: ${!offered ? 'not offered by this agy' : r.ok ? `answers (${short(r.answer, 60)})` : r.quota ? `quota reached (${short(r.error, 120)})` : `error (${short(r.error, 160)})`}`);
+    if (offered && r.ok) { found = true; break; }
+  }
+  if (!found) {
+    line();
+    for (const [id, values] of Object.entries(advertisedAtPreflight || {})) line(`- option ${id}: ${values.join(', ')}`);
+    line();
+    line('SUMMARY');
+    line('- NO RESULT: no agy model would answer (quota or error, see P). Nothing about read-only was tested.');
+    line('- Rerun once the quota resets, or set PROBE_MODELS to other models agy lists.');
+    return;
+  }
+  line(`- using: ${MODEL || 'agy default model'}`);
+  line();
+
   // A. Today's CLI path, the same argv as src/adapters/antigravity.ts uses for a plan seat.
   line('A. Current CLI adapter, plan seat (agy -p --mode plan --dangerously-skip-permissions --disable-slash-commands)');
   {
     const dir = workspace('cli');
     const t = Date.now();
     const res = spawnSync('agy', ['-p', writePrompt(dir), '--add-dir', dir, '--output-format', 'text', '--print-timeout', `${TIMEOUT}s`,
-      '--disable-slash-commands', '--mode', 'plan', '--dangerously-skip-permissions'], { cwd: dir, encoding: 'utf8', timeout: (TIMEOUT + 30) * 1000 });
+      '--disable-slash-commands', '--mode', 'plan', '--dangerously-skip-permissions', ...(MODEL ? ['--model', MODEL] : [])], { cwd: dir, encoding: 'utf8', timeout: (TIMEOUT + 30) * 1000 });
     line(`- exit: ${res.status} in ${((Date.now() - t) / 1000).toFixed(1)}s`);
-    line(`- file written: ${wrote(dir) ? 'YES (read-only broken, as #46 says)' : 'no'}`);
+    line(`- file written: ${wrote(dir) ? 'YES (read-only broken, as #46 says)' : isQuota(res.stdout + res.stderr) ? 'no, but NO RESULT (agy quota)' : 'no'}`);
     line(`- stdout: ${short(res.stdout)}`);
     line(`- stderr: ${short(res.stderr)}`);
   }
@@ -110,7 +143,7 @@ function permissiveModes(advertised) {
   line();
 
   let dirC2 = null;
-  if (!wrote(dirC)) {
+  if (!wrote(dirC) && !c.quota) {
     line('C2. Control again, now also offering our filesystem to agy (ACP fs/write_text_file)');
     dirC2 = workspace('acp-control-fs');
     const c2 = await acpCase('C2', 'auto', writePrompt(dirC2), dirC2, { modes, clientFs: true });
@@ -138,11 +171,14 @@ function permissiveModes(advertised) {
   }
   line();
   line('SUMMARY');
+  line(`- model used: ${MODEL || 'agy default'}`);
   line(`- #46 reproduced on CLI path: see A`);
-  line(`- ACP plan blocked the write: ${wrote(dirB) ? 'NO' : 'yes'}${b.ok ? '' : ' (but the run errored, see B)'}`);
+  line(`- ACP plan blocked the write: ${wrote(dirB) ? 'NO' : b.quota ? 'NO RESULT (agy quota)' : 'yes'}${b.ok || b.quota ? '' : ' (but the run errored, see B)'}`);
   const controlWrote = wrote(dirC) || (dirC2 && wrote(dirC2));
   line(`- ACP control wrote the file: ${wrote(dirC) ? 'yes (C)' : dirC2 && wrote(dirC2) ? 'yes, but only through our filesystem (C2)' : 'NO, see C and C2'}`);
-  line(`- verdict: ${!controlWrote ? 'inconclusive, agy would not write even when allowed'
+  const quotaHit = [b, c].some(r => r.quota);
+  line(`- verdict: ${quotaHit && !controlWrote && !wrote(dirB) ? 'NO RESULT: agy hit its quota mid-run, nothing about read-only was tested'
+    : !controlWrote ? 'inconclusive, agy would not write even when allowed'
     : wrote(dirB) ? 'plan mode did NOT stop the write'
     : wrote(dirC) ? 'plan mode stopped a write that agy makes when allowed'
     : 'agy only writes through the client filesystem, which read-only seats never get; B was safe for that reason, not because of plan mode'}`);

@@ -60,4 +60,6 @@ cd ~ && { [ -d oc-spike ] || git clone -q https://github.com/goshtasb/OpenCounci
 ```
 
 Section B of the report answers #46 for the ACP path; section A reproduces it on today's path;
-section C is the control that shows the prompt really makes agy write.
+section C is the control that shows the prompt really makes agy write. Section P runs first and
+picks a model that answers at all; agy's "quota reached" notice is reported as no result, never as a
+block. The first two Mac runs (Nov 11) hit that quota on every call, so they tested nothing.

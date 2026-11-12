@@ -11,6 +11,8 @@
 //   council-probe.txt  (the Mac probe's prompt) behaves like SCENARIO:write on that file name.
 //   With FAKE_ACP_CLIENT_FS=1 and a client that offers fs.writeTextFile, a write goes through the
 //   client's fs/write_text_file instead of the agent's own tool, with no permission ask.
+//   FAKE_ACP_QUOTA=<model>  any prompt run on that model gets agy's quota notice instead.
+//   FAKE_ACP_MODELS=a,b     extra model values to advertise.
 //   anything else   answers "fake answer: <first 40 chars of the prompt>".
 // It logs every config option the client sets to $FAKE_ACP_LOG (one JSON line each), if set.
 const fs = require('fs');
@@ -31,7 +33,7 @@ const update = (sessionId, u) => send({ method: 'session/update', params: { sess
 const chunk = (sessionId, text) => update(sessionId, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text } });
 
 const configOptions = (s) => [
-  { id: 'model', name: 'Model', category: 'model', type: 'select', currentValue: s.model, options: [{ value: 'fake-model', name: 'Fake Model' }] },
+  { id: 'model', name: 'Model', category: 'model', type: 'select', currentValue: s.model, options: ['fake-model', ...(process.env.FAKE_ACP_MODELS || '').split(',').filter(Boolean)].map(v => ({ value: v, name: v })) },
   { id: 'mode', name: 'Mode', category: 'mode', type: 'select', currentValue: s.mode, options: ['plan', 'accept-edits', 'auto'].map(v => ({ value: v, name: v })) },
 ];
 
@@ -43,6 +45,11 @@ async function onPrompt(id, params) {
   const fileName = /council-probe\.txt/.test(text) && !scenario ? 'council-probe.txt' : 'fake-write.txt';
   if (fileName === 'council-probe.txt') scenario = 'SCENARIO:write';
   log({ promptChars: text.length, scenario, mode: s.mode });
+  if (process.env.FAKE_ACP_QUOTA && process.env.FAKE_ACP_QUOTA === s.model) {
+    chunk(params.sessionId, '\u26a0 Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 71h16m3s.');
+    send({ id, result: { stopReason: 'end_turn' } });
+    return;
+  }
   if (scenario === 'SCENARIO:die') {
     chunk(params.sessionId, 'starting work...');
     setTimeout(() => process.exit(3), 50);
