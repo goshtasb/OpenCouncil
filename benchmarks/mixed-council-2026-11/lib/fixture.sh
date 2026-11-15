@@ -5,7 +5,7 @@
 # The two commits are fetched once (depth 1) from the public fork into <cache dir>/<fork>.git, and a
 # template repo per task is built once in <cache dir>/templates/<task id>; each run is a local clone of it.
 # Nothing in the fetched code is installed, built or run.
-set -eu
+set -eu -o pipefail
 TASKS=$1; ID=$2; CACHE=$3; DEST=$4
 read -r REPO BASE HEAD TITLE < <(node -e '
   const t = require(process.argv[1]).tasks.find(x => x.id === process.argv[2]);
@@ -16,7 +16,26 @@ G=$CACHE/$FORK.git
 T=$CACHE/templates/$ID
 mkdir -p "$CACHE/templates"
 
-if [ ! -f "$T/.ready" ]; then
+# Two runs start in parallel, often on the same task (or two tasks from the same fork), so building the
+# shared bare repo and template is done by one run at a time. mkdir is atomic on every filesystem and
+# macOS has no flock; a lock left by a run that was killed is taken over once its process is gone.
+# A finished template is never rebuilt, so a run whose template is ready skips the lock. A run waits for
+# the lock at most LOCK_TIMEOUT seconds (default 45 minutes: one cold fetch of a large fork); past that
+# its checkout fails and the run stays unscored, to be re-run.
+L=$CACHE/.build-lock
+ready() { [ -f "$T/.ready" ] && [ -s "$CACHE/templates/$ID.tree" ]; }
+if ! ready; then
+  waited=0
+  until mkdir "$L" 2>/dev/null; do
+    if [ -f "$L/pid" ] && ! kill -0 "$(cat "$L/pid" 2>/dev/null)" 2>/dev/null; then rm -rf "$L"; continue; fi
+    [ $waited -ge "${LOCK_TIMEOUT:-2700}" ] && { echo "timed out waiting for another run to build the repo cache" >&2; exit 1; }
+    sleep 2; waited=$((waited + 2))
+  done
+  echo $$ > "$L/pid"
+  trap 'rm -rf "$L"' EXIT
+fi
+
+build() {
   [ -d "$G" ] || git init -q --bare "$G"
   for sha in "$BASE" "$HEAD"; do
     git -C "$G" cat-file -e "$sha^{commit}" 2>/dev/null && continue
@@ -41,8 +60,16 @@ if [ ! -f "$T/.ready" ]; then
   git -C "$T" commit -q --no-verify -m "$TITLE"
   # The change must match the PR exactly.
   [ "$(git -C "$T" rev-parse HEAD^{tree})" = "$(git -C "$G" rev-parse "$HEAD^{tree}")" ] || { echo "tree mismatch for $ID" >&2; exit 1; }
+  git -C "$G" rev-parse "$HEAD^{tree}" > "$CACHE/templates/$ID.tree"
   touch "$T/.ready"
+}
+if ! ready; then
+  # A bare repo that two fetches wrote to at once can be left broken (missing objects); if building
+  # from it fails, start that fork's cache over once.
+  rm -f "$T/.ready"
+  ( build ) || { echo "rebuilding the $FORK cache from scratch" >&2; rm -rf "$G" "$T"; ( build ); } || exit 1
 fi
+if [ -d "$L" ] && [ "$(cat "$L/pid" 2>/dev/null)" = $$ ]; then rm -rf "$L"; trap - EXIT; fi
 
 rm -rf "$DEST"
 git clone -q -b pr "$T" "$DEST"
@@ -50,3 +77,5 @@ git -C "$DEST" branch -q main origin/main
 git -C "$DEST" remote remove origin
 printf '* -text -filter\n' > "$DEST/.git/info/attributes"
 [ -z "$(git -C "$DEST" status --porcelain)" ] || { echo "checkout for $ID is not clean" >&2; exit 1; }
+# The checkout must hold the PR's exact change (guards against cloning a template mid-build).
+[ "$(git -C "$DEST" rev-parse HEAD^{tree})" = "$(cat "$CACHE/templates/$ID.tree")" ] || { echo "checkout for $ID does not match the PR" >&2; exit 1; }

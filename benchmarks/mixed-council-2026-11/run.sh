@@ -43,6 +43,9 @@ for v in ANTHROPIC_API_KEY XAI_API_KEY GROK_API_KEY GEMINI_API_KEY GOOGLE_API_KE
   if [ -n "$(printenv "$v" 2>/dev/null)" ]; then echo "Ignoring $v for this run, so the seats use your plan sign-ins."; unset "$v"; fi
 done
 unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID 2>/dev/null
+# Claude Code updates itself in the background; mid-run that briefly removes the binary every seat and
+# judge call goes through (seen on an npm install under nvm). Updates wait until the benchmark ends.
+export DISABLE_AUTOUPDATER=1
 : > "$RES/preflight.txt"
 rm -f "$RES/STOP"
 
@@ -51,6 +54,14 @@ node -e 'process.exit(+process.versions.node.split(".")[0] >= 18 ? 0 : 1)' || di
 for c in git perl npm tar; do command -v $c >/dev/null || die "$c is not installed."; done
 
 REAL_CLAUDE=$(real_bin claude) || die "Claude Code is not installed: curl -fsSL https://claude.ai/install.sh | bash, then run claude once to sign in."
+# The Claude binary for one call: the one found at start, or, if it has moved since (an update that
+# started before this run), wait for it and look it up again.
+claude_bin() {
+  local i=0
+  while [ ! -x "$REAL_CLAUDE" ] && [ $i -lt 12 ]; do sleep 5; i=$((i + 1)); done
+  [ -x "$REAL_CLAUDE" ] || REAL_CLAUDE=$(real_bin claude) || REAL_CLAUDE=claude-not-found
+  printf '%s' "$REAL_CLAUDE"
+}
 REAL_AGY=""; REAL_GROK=""
 JUDGES=${JUDGES:-"claude gemini"}
 if has_arm mixed || [[ " $JUDGES " == *" gemini "* ]]; then
@@ -80,6 +91,10 @@ COUNCIL_JS=$ROOT/tool/node_modules/open-council-cli/bin/council.js
 cat > "$ROOT/bin/claude" <<SHIM
 #!/bin/bash
 REAL="$REAL_CLAUDE"
+i=0; while [ ! -x "\$REAL" ] && [ \$i -lt 12 ]; do sleep 5; i=\$((i + 1)); done
+if [ ! -x "\$REAL" ]; then
+  REAL=\$(PATH=\$(printf %s "\$PATH" | tr ':' '\\n' | grep -vx "$ROOT/bin" | paste -sd: -) command -v claude) || { echo "claude not found (it moved during the run)" >&2; exit 127; }
+fi
 is_p=0; has_fmt=0; model=""; prev=""
 for a in "\$@"; do
   [ "\$a" = -p ] && is_p=1
@@ -171,6 +186,11 @@ if has_arm mixed; then
   say "   $LEAD_MODEL in plan mode -> answered"
 
   say "-- Grok: $("$REAL_GROK" --version 2>&1 | head -1)"
+  # On a resumed batch, keep the Grok model the batch started with, so the arm doesn't change midway.
+  if [ -z "${GROK_MODEL:-}" ] && [ -f "$RES/meta.txt" ]; then
+    GROK_MODEL=$(sed -n 's/^architect (mixed): \(grok-[0-9][0-9.]*\)$/\1/p' "$RES/meta.txt" | head -1)
+    [ -n "$GROK_MODEL" ] && say "   keeping $GROK_MODEL from the batch's first run"
+  fi
   if [ -z "${GROK_MODEL:-}" ]; then
     GROK_MODEL=$("$REAL_GROK" models 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const ids=[...new Set(s.match(/\bgrok-\d+(?:\.\d+)?\b(?![-\w.])/g)||[])];const v=x=>x.slice(5).split(".").map(Number);ids.sort((a,b)=>{const[p,q]=[v(a),v(b)];return (p[0]-q[0])||((p[1]||0)-(q[1]||0))});process.stdout.write(ids.pop()||"")})')
     [ -n "$GROK_MODEL" ] || die "Could not read a grok-N.N model from 'grok models'. Set GROK_MODEL to one it lists, then rerun."
@@ -211,7 +231,7 @@ judge_run() { # <run dir> <task> <arm> <judge>
   local out=$1 task=$2 arm=$3 j=$4 jd; jd=$(mktemp -d "${TMPDIR:-/tmp}/cj.XXXXXX")
   node "$BENCH/lib/judge.cjs" prompt "$out" "$BENCH/tasks.json" "$task" > "$out/judge-$j.prompt.md"
   if [ "$j" = claude ]; then
-    (cd "$jd" && with_timeout "$JUDGE_TIMEOUT" "$REAL_CLAUDE" -p --model "$JUDGE_MODEL" --tools '' --strict-mcp-config --output-format json \
+    (cd "$jd" && with_timeout "$JUDGE_TIMEOUT" "$(claude_bin)" -p --model "$JUDGE_MODEL" --tools '' --strict-mcp-config --output-format json \
         --append-system-prompt "$NO_TOOLS_NOTE" < "$out/judge-$j.prompt.md") > "$jd/a.json" 2> "$out/judge-$j.err"
     node "$BENCH/lib/claude-json.cjs" "$jd/a.json" "$out/judge-calls.jsonl" "$JUDGE_MODEL" 0 $? > "$out/judge-$j.answer.txt" 2>/dev/null
   else
@@ -242,7 +262,7 @@ run_job() { # <task> <arm> <n>
     local t0 code; t0=$(date +%s)
     if [ "$arm" = single ]; then
       node "$BENCH/lib/make-prompt.cjs" "$BENCH/single-agent-prompt.md" "$w/app" main > "$out/prompt.md"
-      (cd "$w/app" && with_timeout "$SINGLE_TIMEOUT" "$REAL_CLAUDE" -p --model "$ENGINEER_MODEL" --permission-mode plan --strict-mcp-config --output-format json < "$out/prompt.md") > "$out/agent.json" 2> "$out/agent.err"
+      (cd "$w/app" && with_timeout "$SINGLE_TIMEOUT" "$(claude_bin)" -p --model "$ENGINEER_MODEL" --permission-mode plan --strict-mcp-config --output-format json < "$out/prompt.md") > "$out/agent.json" 2> "$out/agent.err"
       code=$?
       node "$BENCH/lib/claude-json.cjs" "$out/agent.json" "$out/calls.jsonl" "$ENGINEER_MODEL" "$(( $(date +%s) - t0 ))" "$code" > "$out/result.md" 2>/dev/null
       grep -q '"is_error":true' "$out/calls.jsonl" 2>/dev/null && [ "$code" = 0 ] && code=1
@@ -282,6 +302,10 @@ run_job() { # <task> <arm> <n>
 }
 
 # ---------------------------------------------------------------- the schedule
+# Runs judged before the checkout fix are checked once against the PR's diff; any that can't be vouched
+# for are set aside and re-run (lib/verify-kept.cjs).
+node "$BENCH/lib/verify-kept.cjs" "$RES" "$BENCH/tasks.json" "$BENCH/lib/fixture.sh" "$CACHE" "$JUDGES" || die "the check of earlier runs failed"
+
 # Run 1 of every task and arm comes before any run 2, so a stop part-way still leaves a balanced set.
 # Within a round the arms are rotated so no arm always goes first.
 node -e '
