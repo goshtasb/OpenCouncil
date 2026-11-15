@@ -174,25 +174,63 @@ test('fixture: the shared cache has git auto-gc off, so a detached gc cannot del
 });
 
 // ------------------------------------------------------------------ run.sh: a sign-in prompt from Antigravity is caught
-test('the Antigravity shim keeps stderr, and a sign-in prompt in it matches SIGNIN_RE', { skip: !hasPerl && 'needs perl' }, () => {
+function agyShim() {
   const dir = tmp('bench-signin-');
   const bin = stubs(dir);
   // Preflight writes the logging shims into <root>/bin.
   const r = spawnSync('bash', [path.join(BENCH, 'run.sh')], { env: { PATH: `${bin}:${process.env.PATH}`, HOME: dir, BENCH_ROOT: path.join(dir, 'root'), GROK_BIN: path.join(bin, 'grok'), PREFLIGHT_ONLY: '1' }, encoding: 'utf8', timeout: 120000 });
   assert.equal(r.status, 0, r.stdout + r.stderr);
-  // Now make the real agy ask for a sign-in, and call it through the shim the way the council does.
-  fs.writeFileSync(path.join(bin, 'agy'), '#!/bin/bash\necho "Go to https://accounts.google.com/o/oauth2/auth?x=1 and paste the code here:" >&2\nexit 1\n');
   const out = path.join(dir, 'run');
   fs.mkdirSync(out);
-  const s = spawnSync(path.join(dir, 'root', 'bin', 'agy'), ['-p', 'hello', '--model', 'm'], { env: { ...process.env, BENCH_CALLS_LOG: path.join(out, 'calls.jsonl') }, encoding: 'utf8' });
-  assert.equal(s.status, 1);
-  assert.match(s.stderr, /accounts\.google\.com/, 'stderr still reaches the council');
-  const kept = fs.readFileSync(path.join(out, 'agy-stderr.log'), 'utf8');
-  const re = fs.readFileSync(path.join(BENCH, 'run.sh'), 'utf8').match(/^SIGNIN_RE='(.*)'$/m)[1];
-  assert.equal(spawnSync('grep', ['-qiE', re, path.join(out, 'agy-stderr.log')]).status, 0, kept);
-  // A review that only talks about OAuth on stdout is not a sign-in prompt: stdout isn't kept.
-  fs.writeFileSync(path.join(bin, 'agy'), '#!/bin/bash\necho "The OAuth authorization code is not checked against accounts.google.com state."\n');
-  fs.rmSync(path.join(out, 'agy-stderr.log'));
-  spawnSync(path.join(dir, 'root', 'bin', 'agy'), ['-p', 'hello'], { env: { ...process.env, BENCH_CALLS_LOG: path.join(out, 'calls.jsonl') } });
-  assert.equal(spawnSync('grep', ['-qiE', re, path.join(out, 'agy-stderr.log')]).status, 1);
+  return { dir, bin, out, shim: path.join(dir, 'root', 'bin', 'agy'), env: { ...process.env, BENCH_CALLS_LOG: path.join(out, 'calls.jsonl') } };
+}
+const signinRe = () => execFileSync('bash', ['-c', `. "$1"; printf %s "$SIGNIN_RE"`, '_', path.join(BENCH, 'lib', 'classify.sh')]).toString();
+const alive = pid => { try { process.kill(pid, 0); return true; } catch { return false; } };
+
+test('an agy that waits at a sign-in prompt: the prompt is logged as it arrives, and killing the shim stops agy too', { skip: !hasPerl && 'needs perl' }, async () => {
+  const s = agyShim();
+  const pidFile = path.join(s.dir, 'agy.pid');
+  fs.writeFileSync(path.join(s.bin, 'agy'), `#!/bin/bash\necho $$ > "${pidFile}"\necho "Go to https://accounts.google.com/o/oauth2/auth?x=1 and paste the code here:" >&2\nexec sleep 60\n`);
+  const { spawn } = require('child_process');
+  // The council runs the shim through execa with a timeout, which sends SIGTERM to the shim alone.
+  const child = spawn(s.shim, ['-p', 'hello', '--model', 'm'], { env: s.env, stdio: ['ignore', 'pipe', 'pipe'] });
+  let stderr = '';
+  child.stderr.on('data', d => { stderr += d; });
+  const log = path.join(s.out, 'agy-stderr.log');
+  for (let i = 0; i < 100 && !(fs.existsSync(log) && fs.readFileSync(log, 'utf8').includes('paste the code')); i++) await new Promise(r => setTimeout(r, 100));
+  assert.match(fs.readFileSync(log, 'utf8'), /paste the code/, 'logged while agy is still waiting');
+  const agyPid = Number(fs.readFileSync(pidFile, 'utf8'));
+  child.kill('SIGTERM');
+  const code = await new Promise(r => child.on('close', c => r(c)));
+  assert.equal(code, 143);
+  for (let i = 0; i < 50 && alive(agyPid); i++) await new Promise(r => setTimeout(r, 100));
+  assert.equal(alive(agyPid), false, 'agy is not left running');
+  assert.match(stderr, /accounts\.google\.com/, 'stderr still reaches the council');
+  assert.equal(spawnSync('grep', ['-qiE', signinRe(), log]).status, 0);
+});
+
+test('an agy that answers normally: stdout is not logged, so review text about OAuth is not a sign-in prompt', { skip: !hasPerl && 'needs perl' }, () => {
+  const s = agyShim();
+  fs.writeFileSync(path.join(s.bin, 'agy'), '#!/bin/bash\necho "The OAuth authorization code is not checked against accounts.google.com state."\n');
+  const r = spawnSync(s.shim, ['-p', 'hello'], { env: s.env, encoding: 'utf8' });
+  assert.equal(r.status, 0);
+  assert.match(r.stdout, /authorization code/);
+  const log = path.join(s.out, 'agy-stderr.log');
+  assert.equal(fs.existsSync(log) ? fs.readFileSync(log, 'utf8') : '', '');
+  assert.match(fs.readFileSync(path.join(s.out, 'calls.jsonl'), 'utf8'), /"vendor":"gemini".*"code":0/);
+});
+
+test('classify_failure: a sign-in prompt stops the batch as SIGNIN; a usage limit as LIMIT; anything else carries on', () => {
+  const classify = (files, code) => {
+    const out = tmp('bench-cls-');
+    const res = tmp('bench-res-');
+    for (const [f, body] of Object.entries(files)) fs.writeFileSync(path.join(out, f), body);
+    const st = execFileSync('bash', ['-c', '. "$1"; classify_failure "$2" "$3" "$4"', '_', path.join(BENCH, 'lib', 'classify.sh'), out, String(code), res]).toString().trim();
+    const stop = fs.existsSync(path.join(res, 'STOP')) ? fs.readFileSync(path.join(res, 'STOP'), 'utf8') : null;
+    return { st, stop };
+  };
+  assert.deepEqual(classify({ 'cli.log': 'Timed out\n', 'agy-stderr.log': 'Paste this code into your application to complete authentication:\n' }, 1), { st: 'SIGNIN', stop: 'signin\n' });
+  assert.deepEqual(classify({ 'cli.log': 'Error 429: quota exceeded\n' }, 1), { st: 'LIMIT', stop: '' });
+  assert.deepEqual(classify({ 'cli.log': 'Timed out\n' }, 1), { st: 'ERROR', stop: null });
+  assert.deepEqual(classify({ 'cli.log': '' }, 142), { st: 'TIMEOUT', stop: null });
 });
