@@ -1,0 +1,398 @@
+{
+  "version": 2,
+  "source": "Golden comments copied unchanged from withmartian/code-review-benchmark, offline/golden_comments/*.json at commit e616e849755441da38f18bf3adba2c9583b03803 (MIT, see golden/LICENSE-martian.txt). PR code comes from the ai-code-review-evaluation forks that the benchmark reviewed, pinned to the base and head commits below.",
+  "selection_rule": "In each of the five golden files, in file order, take the first two PRs that have at least one High or Critical golden comment, skipping a PR whose code is identical to one already taken (sentry-greptile PR 2 has the same head commit as PR 1).",
+  "core_categories": [
+    "bug",
+    "security",
+    "concurrency",
+    "data",
+    "api",
+    "perf",
+    "test_gap",
+    "doc_defect"
+  ],
+  "tasks": [
+    {
+      "id": "sentry-audit-log-pagination",
+      "language": "Python",
+      "title": "Enhanced Pagination Performance for High-Volume Audit Logs",
+      "benchmark_url": "https://github.com/ai-code-review-evaluation/sentry-greptile/pull/1",
+      "source": {
+        "repo": "https://github.com/ai-code-review-evaluation/sentry-greptile",
+        "pr": 1,
+        "base_branch": "performance-optimization-baseline",
+        "base_sha": "28e3db2520d4ea28c57b08da57b83917ba7b2e15",
+        "head_sha": "8ab88145113dd23a930e23b9cbbcf8b30e4c0b17"
+      },
+      "golden": [
+        {
+          "id": "g1",
+          "severity": "High",
+          "category": "bug",
+          "core": true,
+          "comment": "The OptimizedCursorPaginator in organization_auditlogs.py attempts to use negative slice offsets on Django querysets, but Django querysets do not support negative slicing and will raise an AssertionError."
+        },
+        {
+          "id": "g2",
+          "severity": "High",
+          "category": "bug",
+          "core": true,
+          "comment": "When requests are authenticated with API keys or org auth tokens (which have user_id=None), organization_context.member is None. Line 71 attempts to access organization_context.member.has_global_access without checking if member is None, causing an AttributeError crash when optimized_pagination=true is used, even though the request passed all permission checks with valid org:write scope."
+        },
+        {
+          "id": "g3",
+          "severity": "High",
+          "category": "bug",
+          "core": true,
+          "comment": "get_item_key assumes a numeric key, but the paginator is used with order_by=-datetime in the audit logs endpoint; calling math.floor/ceil on a datetime will raise a TypeError."
+        },
+        {
+          "id": "g4",
+          "severity": "Low",
+          "category": "bug",
+          "core": true,
+          "comment": "Importing non-existent OptimizedCursorPaginator"
+        }
+      ]
+    },
+    {
+      "id": "sentry-github-oauth-state",
+      "language": "Python",
+      "title": "GitHub OAuth Security Enhancement",
+      "benchmark_url": "https://github.com/getsentry/sentry/pull/67876",
+      "source": {
+        "repo": "https://github.com/ai-code-review-evaluation/sentry-greptile",
+        "pr": 4,
+        "base_branch": "oauth-state-vulnerable",
+        "base_sha": "ccd14e450fcefa5b286c06221775f50a49059f6d",
+        "head_sha": "843d7c71926b03f0c5847a0740ac3f7fb3c5fbad"
+      },
+      "golden": [
+        {
+          "id": "g1",
+          "severity": "Medium",
+          "category": "bug",
+          "core": true,
+          "comment": "Null reference if github_authenticated_user state is missing"
+        },
+        {
+          "id": "g2",
+          "severity": "Medium",
+          "category": "security",
+          "core": true,
+          "comment": "OAuth state uses pipeline.signature (static) instead of a per-request random value"
+        },
+        {
+          "id": "g3",
+          "severity": "High",
+          "category": "bug",
+          "core": true,
+          "comment": "The code attempts to access integration.metadata[sender][login] without checking for the existence of the sender key. This causes a KeyError for integrations where the sender metadata was not set during creation"
+        }
+      ]
+    },
+    {
+      "id": "grafana-anonymous-device-limit",
+      "language": "Go",
+      "title": "Anonymous: Add configurable device limit",
+      "benchmark_url": "https://github.com/grafana/grafana/pull/79265",
+      "source": {
+        "repo": "https://github.com/ai-code-review-evaluation/grafana-greptile",
+        "pr": 1,
+        "base_branch": "enhance-anonymous-access",
+        "base_sha": "ed865831071a0c0a63c75ad0cfa6661107dabcaf",
+        "head_sha": "3647ba7360b8d157e4a294a650a365b6aca070d8"
+      },
+      "golden": [
+        {
+          "id": "g1",
+          "severity": "High",
+          "category": "concurrency",
+          "core": true,
+          "comment": "Race condition: Multiple concurrent requests could pass the device count check simultaneously and create devices beyond the limit. Consider using a database transaction or lock."
+        },
+        {
+          "id": "g2",
+          "severity": "Medium",
+          "category": "bug",
+          "core": true,
+          "comment": "Anonymous authentication now fails entirely if anonDeviceService.TagDevice returns ErrDeviceLimitReached. Previously, device tagging was asynchronous and non-blocking. This change prevents anonymous users from authenticating when the device limit is reached."
+        },
+        {
+          "id": "g3",
+          "severity": "Low",
+          "category": "doc_defect",
+          "core": true,
+          "comment": "The updateDevice function returns ErrDeviceLimitReached when rowsAffected == 0, but zero affected rows means the device doesn't exist or falls outside the time window, not that a limit was reached."
+        },
+        {
+          "id": "g4",
+          "severity": "Low",
+          "category": "bug",
+          "core": true,
+          "comment": "Time window calculation inconsistency: Using device.UpdatedAt.UTC().Add(-anonymousDeviceExpiration) as the lower bound but device.UpdatedAt as the current time may not match the intended logic. Consider using time.Now().UTC() consistently."
+        },
+        {
+          "id": "g5",
+          "severity": "High",
+          "category": "bug",
+          "core": true,
+          "comment": "The `tagDeviceUI` function populates the local cache with the device ID before the `CreateOrUpdateDevice` call. If `ErrDeviceLimitReached` is returned, the cache entry remains set, allowing subsequent requests to bypass the device limit until the cache expires after 29 minutes."
+        }
+      ]
+    },
+    {
+      "id": "grafana-authz-caching",
+      "language": "Go",
+      "title": "AuthZService: improve authz caching",
+      "benchmark_url": "https://github.com/grafana/grafana/pull/103633",
+      "source": {
+        "repo": "https://github.com/ai-code-review-evaluation/grafana-greptile",
+        "pr": 2,
+        "base_branch": "cache-optimization-baseline",
+        "base_sha": "e650fa7b2041c91fbb98ef3432b3969e13bbdac9",
+        "head_sha": "d9dc93c4a6c88ef850dbe526cb3226ae99cafa20"
+      },
+      "golden": [
+        {
+          "id": "g1",
+          "severity": "High",
+          "category": "security",
+          "core": true,
+          "comment": "The Check operation exhibits asymmetric cache trust logic: cached permission grants are trusted and returned immediately, but cached denials from the same permission cache are ignored, leading to a fresh database lookup. This allows stale cached grants to provide access to revoked resources, posing a security risk. "
+        },
+        {
+          "id": "g2",
+          "severity": "Low",
+          "category": "doc_defect",
+          "core": true,
+          "comment": "The test comment says the cached permissions 'allow access', but the map stores false for dashboards:uid:dash1, so checkPermission will still treat this scope as not allowed."
+        },
+        {
+          "id": "g3",
+          "severity": "Medium",
+          "category": "data",
+          "core": true,
+          "comment": "The cache key construction in `userPermDenialCacheKey` uses simple string concatenation with underscores, which can lead to ambiguous keys and collision risks when any component contains underscores or is empty. This could result in incorrect denial cache hits, affecting user permissions."
+        }
+      ]
+    },
+    {
+      "id": "keycloak-idp-login-cache",
+      "language": "Java",
+      "title": "Add caching support for IdentityProviderStorageProvider.getForLogin operations",
+      "benchmark_url": "https://github.com/keycloak/keycloak/pull/32918",
+      "source": {
+        "repo": "https://github.com/ai-code-review-evaluation/keycloak-greptile",
+        "pr": 2,
+        "base_branch": "feature-idp-cache-baseline",
+        "base_sha": "5ff9e9147dc08432b3ec7753906467c390b1e6ee",
+        "head_sha": "3e597722a9164d145bc46aa1de5bd714fb6ba357"
+      },
+      "golden": [
+        {
+          "id": "g1",
+          "severity": "Critical",
+          "category": "bug",
+          "core": true,
+          "comment": "InfinispanIdentityProviderStorageProvider.getForLogin() recursively calls session.identityProviders().getById() instead of idpDelegate.getById(), causing the cache lookup to re-enter the same caching layer."
+        },
+        {
+          "id": "g2",
+          "severity": "Medium",
+          "category": "bug",
+          "core": true,
+          "comment": "Cleanup reference uses incorrect alias - should be 'idp-alias-' + i instead of 'alias'."
+        }
+      ]
+    },
+    {
+      "id": "keycloak-authz-crypto-provider",
+      "language": "Java",
+      "title": "Add AuthzClientCryptoProvider for authorization client cryptographic operations",
+      "benchmark_url": "https://github.com/keycloak/keycloak/pull/33832",
+      "source": {
+        "repo": "https://github.com/ai-code-review-evaluation/keycloak-greptile",
+        "pr": 3,
+        "base_branch": "feature-authz-crypto-baseline",
+        "base_sha": "10aca5552314d6e5c9226f3c6d0107861c38c693",
+        "head_sha": "b95d12a968e8374a93ddcd56f47ab12eb4136ff4"
+      },
+      "golden": [
+        {
+          "id": "g1",
+          "severity": "High",
+          "category": "bug",
+          "core": true,
+          "comment": "Returns wrong provider (default keystore instead of BouncyCastle)"
+        },
+        {
+          "id": "g2",
+          "severity": "Low",
+          "category": "perf",
+          "core": true,
+          "comment": "Dead code exists where ASN1Encoder instances are created and written to, but their results are immediately discarded. The actual encoding is performed by new ASN1Encoder instances created in the subsequent return statement, rendering the earlier operations useless."
+        },
+        {
+          "id": "g3",
+          "severity": "Medium",
+          "category": "bug",
+          "core": true,
+          "comment": "When length starts at -1 from indefinite-length encoding, the arithmetic 'length = length - bytes.length' will behave unexpectedly, potentially leading to incorrect processing of encoded data."
+        },
+        {
+          "id": "g4",
+          "severity": "Low",
+          "category": "speculative",
+          "core": false,
+          "comment": "Abstract order() method on CryptoProvider may break backward compatibility with existing implementations"
+        }
+      ]
+    },
+    {
+      "id": "discourse-topic-unsubscribe",
+      "language": "Ruby",
+      "title": "FEATURE: per-topic unsubscribe option in emails",
+      "benchmark_url": "https://github.com/ai-code-review-evaluation/discourse-graphite/pull/2",
+      "source": {
+        "repo": "https://github.com/ai-code-review-evaluation/discourse-graphite",
+        "pr": 2,
+        "base_branch": "email-notifications-enhancement",
+        "base_sha": "56abd247e1829cb6de82dfcc8ce04deb5f0d1e91",
+        "head_sha": "6669a2d94d76eea3b99b8c476d12b1eb66726b07"
+      },
+      "golden": [
+        {
+          "id": "g1",
+          "severity": "High",
+          "category": "bug",
+          "core": true,
+          "comment": "logic: Potential nil pointer exception - if no TopicUser record exists, tu will be nil and calling methods on it will crash"
+        },
+        {
+          "id": "g2",
+          "severity": "Low",
+          "category": "style",
+          "core": false,
+          "comment": "Typo in property name: 'stopNotificiationsText' should be 'stopNotificationsText' (missing 'n' in 'Notifications')"
+        }
+      ]
+    },
+    {
+      "id": "discourse-blocked-email",
+      "language": "Ruby",
+      "title": "Add comprehensive email validation for blocked users",
+      "benchmark_url": "https://github.com/ai-code-review-evaluation/discourse-graphite/pull/3",
+      "source": {
+        "repo": "https://github.com/ai-code-review-evaluation/discourse-graphite",
+        "pr": 3,
+        "base_branch": "blocked-email-validation-pre",
+        "base_sha": "e25638dab0d4b98f99c8fe8976ccaae8f4fb9db3",
+        "head_sha": "5f8a130277dbddc95d133cd2832be639baf89213"
+      },
+      "golden": [
+        {
+          "id": "g1",
+          "severity": "Medium",
+          "category": "concurrency",
+          "core": true,
+          "comment": "BlockedEmail.should_block_email? method has side effects during a read operation - it updates statistics even when just checking if an email should be blocked. This could cause race conditions in concurrent environments and makes the method name misleading."
+        },
+        {
+          "id": "g2",
+          "severity": "Medium",
+          "category": "bug",
+          "core": true,
+          "comment": "The regex pattern @(#{domains}) in email_in_restriction_setting? method only matches domain suffixes, not full domains with proper boundary anchoring. An attacker can register evil.example.com to bypass a whitelist entry for example.com."
+        },
+        {
+          "id": "g3",
+          "severity": "Critical",
+          "category": "security",
+          "core": true,
+          "comment": "The case-sensitive email lookup in `BlockedEmail.should_block?` creates a bypass risk, allowing 'User@Example.com' to bypass a block on 'user@example.com'. This can lead to unauthorized access to blocked users."
+        }
+      ]
+    },
+    {
+      "id": "calcom-async-appstore-import",
+      "language": "TypeScript",
+      "title": "Async import of the appStore packages",
+      "benchmark_url": "https://github.com/calcom/cal.com/pull/8087",
+      "source": {
+        "repo": "https://github.com/ai-code-review-evaluation/cal.com-greptile",
+        "pr": 2,
+        "base_branch": "appstore-sync-refactor-base",
+        "base_sha": "bff28e5d6fef42b4e7c036c688f0bad4410b42a2",
+        "head_sha": "e043a5efd872362a3fc146ed0d9ce4393e316c1e"
+      },
+      "golden": [
+        {
+          "id": "g1",
+          "severity": "Low",
+          "category": "speculative",
+          "core": false,
+          "comment": "Consider adding try-catch around the await to handle import failures gracefully"
+        },
+        {
+          "id": "g2",
+          "severity": "Critical",
+          "category": "concurrency",
+          "core": true,
+          "comment": "The code uses forEach with async callbacks, which causes asynchronous operations (e.g., calendar/video event deletions, payment refunds) to run concurrently without being awaited. This 'fire-and-forget' behavior leads to unhandled promise rejections, race conditions, and incomplete cleanup, as surrounding try-catch blocks cannot properly handle errors from these unawaited promises. Replace forEach with for...of loops or Promise.all() with map() to ensure proper sequential execution and error handling."
+        }
+      ]
+    },
+    {
+      "id": "calcom-2fa-backup-codes",
+      "language": "TypeScript",
+      "title": "feat: 2fa backup codes",
+      "benchmark_url": "https://github.com/calcom/cal.com/pull/10600",
+      "source": {
+        "repo": "https://github.com/ai-code-review-evaluation/cal.com-greptile",
+        "pr": 3,
+        "base_branch": "enhance-two-factor-security-foundation",
+        "base_sha": "efa6d464a38e60ceeeb88f40668c1c4ac4bfaf54",
+        "head_sha": "a308075bc39b77ed7059b0cae9d443d669a7bf98"
+      },
+      "golden": [
+        {
+          "id": "g1",
+          "severity": "Low",
+          "category": "style",
+          "core": false,
+          "comment": "The exported function TwoFactor handles backup codes and is in BackupCode.tsx. Inconsistent naming."
+        },
+        {
+          "id": "g2",
+          "severity": "Low",
+          "category": "doc_defect",
+          "core": true,
+          "comment": "Error message mentions 'backup code login' but this is a disable endpoint, not login"
+        },
+        {
+          "id": "g3",
+          "severity": "Medium",
+          "category": "bug",
+          "core": true,
+          "comment": "Backup code validation is case-sensitive due to the use of indexOf(). This causes validation to fail if a user enters uppercase hex characters, as backup codes should be case-insensitive for a better user experience."
+        },
+        {
+          "id": "g4",
+          "severity": "High",
+          "category": "concurrency",
+          "core": true,
+          "comment": "Because backupCodes are decrypted and mutated in memory before being written back, two concurrent login requests using the same backupCode could both pass this check and update, so a single backup code may effectively be accepted more than once if used concurrently, weakening the intended one-time-use semantics."
+        },
+        {
+          "id": "g5",
+          "severity": "Low",
+          "category": "perf",
+          "core": true,
+          "comment": "Object URL for backup codes is not revoked on component unmount, leading to a potential memory leak. This can cause increased memory usage over time, especially if the component is mounted and unmounted frequently."
+        }
+      ]
+    }
+  ]
+}
