@@ -302,6 +302,10 @@ run_job() { # <task> <arm> <n>
 }
 
 # ---------------------------------------------------------------- the schedule
+# Runs judged before the checkout fix are checked once against the PR's diff; any that can't be vouched
+# for are set aside and re-run (lib/verify-kept.cjs).
+node "$BENCH/lib/verify-kept.cjs" "$RES" "$BENCH/tasks.json" "$BENCH/lib/fixture.sh" "$CACHE" "$JUDGES" || die "the check of earlier runs failed"
+
 # Run 1 of every task and arm comes before any run 2, so a stop part-way still leaves a balanced set.
 # Within a round the arms are rotated so no arm always goes first.
 node -e '

@@ -5,7 +5,7 @@
 # The two commits are fetched once (depth 1) from the public fork into <cache dir>/<fork>.git, and a
 # template repo per task is built once in <cache dir>/templates/<task id>; each run is a local clone of it.
 # Nothing in the fetched code is installed, built or run.
-set -eu
+set -eu -o pipefail
 TASKS=$1; ID=$2; CACHE=$3; DEST=$4
 read -r REPO BASE HEAD TITLE < <(node -e '
   const t = require(process.argv[1]).tasks.find(x => x.id === process.argv[2]);
@@ -19,13 +19,21 @@ mkdir -p "$CACHE/templates"
 # Two runs start in parallel, often on the same task (or two tasks from the same fork), so building the
 # shared bare repo and template is done by one run at a time. mkdir is atomic on every filesystem and
 # macOS has no flock; a lock left by a run that was killed is taken over once its process is gone.
+# A finished template is never rebuilt, so a run whose template is ready skips the lock. A run waits for
+# the lock at most LOCK_TIMEOUT seconds (default 45 minutes: one cold fetch of a large fork); past that
+# its checkout fails and the run stays unscored, to be re-run.
 L=$CACHE/.build-lock
-until mkdir "$L" 2>/dev/null; do
-  if [ -f "$L/pid" ] && ! kill -0 "$(cat "$L/pid" 2>/dev/null)" 2>/dev/null; then rm -rf "$L"; continue; fi
-  sleep 2
-done
-echo $$ > "$L/pid"
-trap 'rm -rf "$L"' EXIT
+ready() { [ -f "$T/.ready" ] && [ -s "$CACHE/templates/$ID.tree" ]; }
+if ! ready; then
+  waited=0
+  until mkdir "$L" 2>/dev/null; do
+    if [ -f "$L/pid" ] && ! kill -0 "$(cat "$L/pid" 2>/dev/null)" 2>/dev/null; then rm -rf "$L"; continue; fi
+    [ $waited -ge "${LOCK_TIMEOUT:-2700}" ] && { echo "timed out waiting for another run to build the repo cache" >&2; exit 1; }
+    sleep 2; waited=$((waited + 2))
+  done
+  echo $$ > "$L/pid"
+  trap 'rm -rf "$L"' EXIT
+fi
 
 build() {
   [ -d "$G" ] || git init -q --bare "$G"
@@ -55,13 +63,13 @@ build() {
   git -C "$G" rev-parse "$HEAD^{tree}" > "$CACHE/templates/$ID.tree"
   touch "$T/.ready"
 }
-if [ ! -f "$T/.ready" ] || [ ! -s "$CACHE/templates/$ID.tree" ]; then
+if ! ready; then
   # A bare repo that two fetches wrote to at once can be left broken (missing objects); if building
   # from it fails, start that fork's cache over once.
   rm -f "$T/.ready"
   ( build ) || { echo "rebuilding the $FORK cache from scratch" >&2; rm -rf "$G" "$T"; ( build ); } || exit 1
 fi
-rm -rf "$L"; trap - EXIT
+if [ -d "$L" ] && [ "$(cat "$L/pid" 2>/dev/null)" = $$ ]; then rm -rf "$L"; trap - EXIT; fi
 
 rm -rf "$DEST"
 git clone -q -b pr "$T" "$DEST"
