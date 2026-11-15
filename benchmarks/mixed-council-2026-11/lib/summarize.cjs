@@ -93,7 +93,7 @@ const L = [];
 const meta = read(path.join(res, 'meta.txt'));
 L.push('# Mixed council vs one agent on real pull requests: results', '');
 if (meta) L.push('```', meta.trim(), '```', '');
-L.push(`${runs.length} judged runs, ${unscored.length} not scored yet (errors, timeouts, usage limits or judge failures; the same command re-runs those, and they never count as misses).`, '');
+L.push(`${runs.length} judged runs, ${unscored.length} not scored yet (errors, timeouts, usage limits, seats that failed over to another AI, or judge failures; the same command re-runs those, and they never count as misses).`, '');
 
 L.push('## Known issues found (primary: core issues, Claude Opus judge)', '', `| Task | Core issues | ${armsSeen.map(a => `${a} (per run)`).join(' | ')} |`, `| --- | --- | ${armsSeen.map(() => '---').join(' | ')} |`);
 for (const t of tasks) {

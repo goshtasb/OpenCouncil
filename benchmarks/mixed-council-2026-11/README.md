@@ -43,7 +43,7 @@ That gives 10 PRs in 5 languages, with 33 known issues: 29 in the core categorie
 
 ## Arms
 
-All arms review the same checkout with `open-council-cli` 0.3.2 from the public npm registry, or the same review instructions for the single agent. Every seat runs on its CLI's own plan sign-in; API keys in the environment are ignored for the run.
+All arms review the same checkout with `open-council-cli` 0.4.0 from the public npm registry, or the same review instructions for the single agent. Every seat runs on its CLI's own plan sign-in; API keys in the environment are ignored for the run.
 
 | Arm | Lead PM | Chief Engineer | Chief Architect |
 | --- | --- | --- | --- |
@@ -51,7 +51,8 @@ All arms review the same checkout with `open-council-cli` 0.3.2 from the public 
 | **single** (primary) | one Claude Code agent on `opus`, plan mode, `single-agent-prompt.md` | | |
 | **solo** (secondary, optional) | Claude `sonnet` | Claude `opus` | Claude `sonnet`, tools off |
 
-- The council arms run `council review --base main --no-open`, the same command a user runs.
+- The council arms run `council review --base main --rounds 2 --no-open`, which is what `council review --debate` runs: the Lead PM answers the objections and the seats argue for a second round. The default review is one quick round, one call per seat. A blind test on one real pull request (Nov 14) found the quick round no better than one Claude call, so this benchmark tests the council actually arguing.
+- In 0.4.0 a review hands a seat that fails to another AI instead of stopping. A run where any seat failed or was taken over is not the arm it claims to be, so it is not scored (it is listed, and re-run on resume). A failure from a usage limit stops the batch.
 - The single agent gets the diff, the list of changed files and the same instruction the council's review carries: that notes saying something is handled elsewhere are unverified claims. It answers with Blocking and Non-blocking findings.
 - **Nothing in the reviewed code is run.** Claude seats run in plan mode, the Grok seat has every tool denied, Gemini runs in plan mode, and the council's install and test gates are empty. Seats read the checkout; they don't execute it.
 - The **solo** arm (an all-Claude council) separates "a council" from "different models". It is not run by default because it doubles the run time; if it is run, it is reported with the rest and its comparisons are secondary.
@@ -83,7 +84,7 @@ All arms review the same checkout with `open-council-cli` 0.3.2 from the public 
 - Median distinct problems raised, known issues found per problem raised (a rough precision proxy), and median review length, because a longer review has more chances to match.
 - Wall time per run, Claude tokens and the API-price cost Claude Code reports. Gemini and Grok don't report usage, so their cost is not measured; their call counts are.
 
-**Runs that fail.** A run that errors, times out or hits a usage limit is not scored and never counts as a miss. The script stops the batch at a usage limit; running the same command again resumes and re-runs unscored runs. A judge answer that can't be parsed is re-judged on the next resume, without re-running the review. All of these are listed in the summary.
+**Runs that fail.** A run that errors, times out, hits a usage limit or has a seat taken over by another AI is not scored and never counts as a miss. The script stops the batch at a usage limit; running the same command again resumes and re-runs unscored runs. A judge answer that can't be parsed is re-judged on the next resume, without re-running the review. All of these are listed in the summary.
 
 **Hand audit.** Before results are published, a person reads every run where the two judges disagree, plus five other runs per arm picked at random, and reports any decision they would change. Judge scores are not edited; disagreements are reported alongside them.
 
@@ -109,9 +110,14 @@ bash benchmarks/mixed-council-2026-11/run.sh
 - `ARMS="mixed single solo"` adds the all-Claude council.
 - `RUNS=5`, or `RUNS_MIXED`, `RUNS_SINGLE`, `RUNS_SOLO`, change the runs per arm.
 - `PARALLEL=2` is the number of runs at once (default 2).
+- `TASKS="discourse-blocked-email"` runs only the named tasks, for a quick trial; the summary covers whatever has run.
 - Results go to `~/oc-bench/results`, and the summary to `~/oc-bench/summary.md` and `summary.json`. Ctrl-C stops; the same command resumes.
 
 Nothing is pushed, posted or published by the script.
+
+## Changes before merge
+
+- Nov 15: moved from 0.3.2 to 0.4.0, the version on npm. The council arms argue for 2 rounds, and runs where a seat failed over are not scored. Checked here with an all-Claude 2-round review on one task (not counted): it ran, was split into sections and judged end to end.
 
 ## Changes after pre-registration
 

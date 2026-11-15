@@ -4,6 +4,7 @@
 #   bash run.sh                      preflight, then every task x arm (mixed, single) x 3 runs, judged; re-run to resume
 #   PREFLIGHT_ONLY=1 bash run.sh     check every CLI is signed in and answers, then stop
 #   RUNS_SINGLE=10 bash run.sh       e.g. raise the single agent to 10 runs per task (noise floor)
+#   TASKS="discourse-blocked-email" bash run.sh   only these tasks (space-separated ids from tasks.json)
 #   ARMS="mixed single solo" bash run.sh  also run the all-Claude council (secondary arm)
 #   GROK_MODEL=grok-4.7 bash run.sh  pin the Grok model (default: the newest plain grok-N.N that `grok models` lists)
 #
@@ -15,7 +16,8 @@ set -u
 BENCH=$(cd "$(dirname "$0")" && pwd)
 ROOT=${BENCH_ROOT:-$HOME/oc-bench}
 RES=$ROOT/results
-CLI_VERSION=0.3.2
+CLI_VERSION=0.4.0
+COUNCIL_ROUNDS=${COUNCIL_ROUNDS:-2}   # the council arms argue: --rounds 2 is what `council review --debate` runs
 LEAD_MODEL=gemini-4-argon-high
 ENGINEER_MODEL=opus
 SOLO_SIDE_MODEL=sonnet
@@ -197,9 +199,10 @@ say "Seats:"
 has_arm mixed && say "  mixed  = Lead PM $LEAD_MODEL (Antigravity), Chief Engineer $ENGINEER_MODEL (Claude Code), Chief Architect $GROK_MODEL (Grok, tools off)"
 has_arm solo && say "  solo   = Lead PM $SOLO_SIDE_MODEL, Chief Engineer $ENGINEER_MODEL, Chief Architect $SOLO_SIDE_MODEL (tools off), all Claude Code"
 has_arm single && say "  single = one Claude Code agent on $ENGINEER_MODEL, plan mode, same review instructions"
+say "Council rounds: $COUNCIL_ROUNDS (open-council-cli $CLI_VERSION, council review --rounds $COUNCIL_ROUNDS)"
 say "Judges: $JUDGES (Claude $JUDGE_MODEL is the pre-registered one)"
 { echo "date: $(date '+%Y-%m-%d %H:%M %Z')"; echo "open-council-cli: $CLI_VERSION"; echo "benchmark commit: $(git -C "$BENCH" log -1 --format=%H -- . 2>/dev/null)";
-  echo "arms: $ARMS"; echo "lead (mixed): $LEAD_MODEL"; echo "engineer: $ENGINEER_MODEL"; echo "architect (mixed): ${GROK_MODEL:-n/a}"; echo "solo side seats: $SOLO_SIDE_MODEL"; echo "judges: $JUDGES (claude = $JUDGE_MODEL, gemini = $LEAD_MODEL)"; } > "$RES/meta.txt"
+  echo "arms: $ARMS"; echo "council rounds: $COUNCIL_ROUNDS"; echo "tasks: ${TASKS:-all}"; echo "lead (mixed): $LEAD_MODEL"; echo "engineer: $ENGINEER_MODEL"; echo "architect (mixed): ${GROK_MODEL:-n/a}"; echo "solo side seats: $SOLO_SIDE_MODEL"; echo "judges: $JUDGES (claude = $JUDGE_MODEL, gemini = $LEAD_MODEL)"; } > "$RES/meta.txt"
 [ -n "${PREFLIGHT_ONLY:-}" ] && { say "Preflight passed."; exit 0; }
 
 # ---------------------------------------------------------------- judges
@@ -250,11 +253,21 @@ run_job() { # <task> <arm> <n>
       cp "$out/agent.err" "$out/cli.log"
     else
       write_config "$arm" "$w/.council/config.yml"
-      (cd "$w/app" && COUNCIL_HOME="$w/h" BENCH_CALLS_LOG="$out/calls.jsonl" with_timeout "$COUNCIL_TIMEOUT" node "$COUNCIL_JS" review --base main --no-open) > "$out/cli.log" 2>&1
+      (cd "$w/app" && COUNCIL_HOME="$w/h" BENCH_CALLS_LOG="$out/calls.jsonl" with_timeout "$COUNCIL_TIMEOUT" node "$COUNCIL_JS" review --base main --rounds "$COUNCIL_ROUNDS" --no-open) > "$out/cli.log" 2>&1
       code=$?
       local sess; sess=$(ls -d "$w/h"/projects/*/sessions/* 2>/dev/null | head -1)
       [ -n "$sess" ] && cp -R "$sess" "$out/session"
       [ -n "$sess" ] || { [ "$code" = 0 ] && code=1; }
+      # 0.4 hands a failed seat to another provider instead of stopping. A run where any seat failed or was taken over
+      # is not the arm it says it is, so it is not scored (and is re-run on resume).
+      if [ "$code" = 0 ]; then
+        local fo; fo=$(node "$BENCH/lib/seats-check.cjs" "$out/session/seats.json")
+        case "$fo" in
+          OK) ;;
+          QUOTA*) echo "$(date +%s)" > "$out/seconds"; printf '{"status":"LIMIT","detail":"%s"}\n' "${fo#QUOTA }" > "$out/score.json"; touch "$RES/STOP"; rm -rf "$w"; echo "$task $arm $n: LIMIT (${fo#QUOTA })"; return 0;;
+          *) printf '{"status":"FAILOVER","detail":"%s"}\n' "${fo#FAILOVER }" > "$out/score.json"; rm -rf "$w"; echo "$task $arm $n: not scored, a seat failed over (${fo#FAILOVER })"; return 0;;
+        esac
+      fi
     fi
     echo "$code" > "$out/exit"; echo $(( $(date +%s) - t0 )) > "$out/seconds"
     rm -rf "$w"
@@ -286,7 +299,11 @@ run_job() { # <task> <arm> <n>
 # Within a round the arms are rotated so no arm always goes first.
 node -e '
   const [tasksFile, arms, runs] = [process.argv[1], process.argv[2].split(/\s+/).filter(Boolean), JSON.parse(process.argv[3])];
-  const tasks = require(tasksFile).tasks.map(t => t.id);
+  const only = (process.env.TASKS || "").split(/\s+/).filter(Boolean);
+  const all = require(tasksFile).tasks.map(t => t.id);
+  const bad = only.filter(t => !all.includes(t));
+  if (bad.length) { console.error(`unknown task ${bad.join(" ")}; tasks.json has ${all.join(" ")}`); process.exit(1); }
+  const tasks = only.length ? all.filter(t => only.includes(t)) : all;
   const max = Math.max(...arms.map(a => runs[a]));
   let i = 0;
   for (let n = 1; n <= max; n++) for (const t of tasks) {
