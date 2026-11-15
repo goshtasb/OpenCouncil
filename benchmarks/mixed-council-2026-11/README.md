@@ -115,4 +115,7 @@ Nothing is pushed, posted or published by the script.
 
 ## Changes after pre-registration
 
-None yet.
+**2026-11-15, harness fixes only (no change to tasks, arms, prompts, judges or analysis).** The first batch on the owner's Mac judged 23 runs and left 27 unscored. 22 of those were checkout failures: two runs started in parallel built the same shared repo cache at once and broke it (files removed mid-copy, missing objects, a template deleted while another run cloned it). One more was the Claude Code binary disappearing mid-run, most likely a background self-update.
+- `lib/fixture.sh` builds the shared cache one run at a time (a lock), rebuilds a fork's cache from scratch once if building from it fails, and checks that every checkout holds the PR's exact change before a run starts.
+- `run.sh` turns off Claude Code's self-update for the run (`DISABLE_AUTOUPDATER=1`), waits for and looks up the Claude binary again if it has moved, and on a resumed batch keeps the Grok model the batch started with.
+- The 23 judged runs are kept as they are: their checkouts passed the existing tree check against the PR's head commit, and every one of them found at least one known issue, so none reviewed an empty change. Unscored runs are re-run, as the scoring rules already said. `open-council-cli` stays at 0.3.2, the pre-registered version, so all runs use the same council.

@@ -16,7 +16,18 @@ G=$CACHE/$FORK.git
 T=$CACHE/templates/$ID
 mkdir -p "$CACHE/templates"
 
-if [ ! -f "$T/.ready" ]; then
+# Two runs start in parallel, often on the same task (or two tasks from the same fork), so building the
+# shared bare repo and template is done by one run at a time. mkdir is atomic on every filesystem and
+# macOS has no flock; a lock left by a run that was killed is taken over once its process is gone.
+L=$CACHE/.build-lock
+until mkdir "$L" 2>/dev/null; do
+  if [ -f "$L/pid" ] && ! kill -0 "$(cat "$L/pid" 2>/dev/null)" 2>/dev/null; then rm -rf "$L"; continue; fi
+  sleep 2
+done
+echo $$ > "$L/pid"
+trap 'rm -rf "$L"' EXIT
+
+build() {
   [ -d "$G" ] || git init -q --bare "$G"
   for sha in "$BASE" "$HEAD"; do
     git -C "$G" cat-file -e "$sha^{commit}" 2>/dev/null && continue
@@ -41,8 +52,16 @@ if [ ! -f "$T/.ready" ]; then
   git -C "$T" commit -q --no-verify -m "$TITLE"
   # The change must match the PR exactly.
   [ "$(git -C "$T" rev-parse HEAD^{tree})" = "$(git -C "$G" rev-parse "$HEAD^{tree}")" ] || { echo "tree mismatch for $ID" >&2; exit 1; }
+  git -C "$G" rev-parse "$HEAD^{tree}" > "$CACHE/templates/$ID.tree"
   touch "$T/.ready"
+}
+if [ ! -f "$T/.ready" ] || [ ! -s "$CACHE/templates/$ID.tree" ]; then
+  # A bare repo that two fetches wrote to at once can be left broken (missing objects); if building
+  # from it fails, start that fork's cache over once.
+  rm -f "$T/.ready"
+  ( build ) || { echo "rebuilding the $FORK cache from scratch" >&2; rm -rf "$G" "$T"; ( build ); } || exit 1
 fi
+rm -rf "$L"; trap - EXIT
 
 rm -rf "$DEST"
 git clone -q -b pr "$T" "$DEST"
@@ -50,3 +69,5 @@ git -C "$DEST" branch -q main origin/main
 git -C "$DEST" remote remove origin
 printf '* -text -filter\n' > "$DEST/.git/info/attributes"
 [ -z "$(git -C "$DEST" status --porcelain)" ] || { echo "checkout for $ID is not clean" >&2; exit 1; }
+# The checkout must hold the PR's exact change (guards against cloning a template mid-build).
+[ "$(git -C "$DEST" rev-parse HEAD^{tree})" = "$(cat "$CACHE/templates/$ID.tree")" ] || { echo "checkout for $ID does not match the PR" >&2; exit 1; }
