@@ -82,15 +82,19 @@ function signTest(wins, losses) {
   let p = 0; for (let i = 0; i <= k; i++) p += Math.exp(lc(n, i) - n * Math.log(2));
   return Math.min(1, 2 * p);
 }
-function compare(x, y, judge = 'claude') {
+// matched: pool both sides only over the known issues both were scored on, so an arm that ran on fewer
+// tasks (the mixed arm on one Lead PM model) is set against the other arm on those same tasks only.
+function compare(x, y, judge = 'claude', matched = false) {
   const rx = rates(x, judge), ry = rates(y, judge);
   let w = 0, l = 0, tie = 0;
+  const a = { f: 0, n: 0 }, b = { f: 0, n: 0 };
   for (const k of Object.keys(rx)) {
     if (!ry[k]) continue;
     const d = rx[k].f / rx[k].n - ry[k].f / ry[k].n;
     if (d > 1e-9) w++; else if (d < -1e-9) l++; else tie++;
+    a.f += rx[k].f; a.n += rx[k].n; b.f += ry[k].f; b.n += ry[k].n;
   }
-  const a = pooled(x, CORE, judge), b = pooled(y, CORE, judge);
+  if (!matched) { Object.assign(a, pooled(x, CORE, judge)); Object.assign(b, pooled(y, CORE, judge)); }
   return `${x} ${a.f}/${a.n} (${pct(a.f, a.n)}) vs ${y} ${b.f}/${b.n} (${pct(b.f, b.n)}). Known issues ${x} found more often: ${w}; ${y} more often: ${l}; same: ${tie}. Sign test two-sided p = ${signTest(w, l).toFixed(3)}`;
 }
 
@@ -116,10 +120,10 @@ const leads = [...new Set(runs.filter(r => r.arm === 'mixed').map(r => r.lead))]
 if (leads.length > 1) {
   const pre = (meta.match(/^pre-registered lead \(mixed\): (\S+)/m) || [])[1] || 'gemini-4-argon-high';
   leads.sort((a, b) => (b === pre) - (a === pre));
-  L.push('## Mixed arm by Lead PM model', '', `The Lead PM model changed during the batch (see Deviations). Each line compares only that model's mixed runs with the single agent, on the known issues both were scored on. ${pre} is the pre-registered model. The pooled mixed line above mixes both models; these are the comparable figures.`, '');
+  L.push('## Mixed arm by Lead PM model', '', `The Lead PM model changed during the batch (see Deviations). Each line compares only that model's mixed runs with the single agent's runs on the same tasks, pooled over the known issues both were scored on, so a model that ran only some tasks is not set against the single agent's whole set. ${pre} is the pre-registered model. The pooled mixed line above mixes both models; these are the comparable figures.`, '');
   for (const m of leads) {
     const k = `mixed@${m}`, nRuns = of(k).length;
-    L.push(`- **Lead PM ${m}${m === pre ? ' (pre-registered)' : ''}**, ${nRuns} run${nRuns === 1 ? '' : 's'}: ${armsSeen.includes('single') ? compare(k, 'single') : (p => `${p.f}/${p.n} (${pct(p.f, p.n)})`)(pooled(k, CORE))}`);
+    L.push(`- **Lead PM ${m}${m === pre ? ' (pre-registered)' : ''}**, ${nRuns} run${nRuns === 1 ? '' : 's'}: ${armsSeen.includes('single') ? compare(k, 'single', 'claude', true) : (p => `${p.f}/${p.n} (${pct(p.f, p.n)})`)(pooled(k, CORE))}`);
   }
   L.push('');
 }
