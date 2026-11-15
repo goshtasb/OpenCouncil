@@ -6,6 +6,10 @@
 #   RUNS_SINGLE=10 bash run.sh       e.g. raise the single agent to 10 runs per task (noise floor)
 #   ARMS="mixed single solo" bash run.sh  also run the all-Claude council (secondary arm)
 #   GROK_MODEL=grok-4.7 bash run.sh  pin the Grok model (default: the newest plain grok-N.N that `grok models` lists)
+#   LEAD_CANDIDATES="gemini-4-argon-high gemini-3.8-flash-high auto" bash run.sh
+#                                    try these Lead PM models in order and use the first that answers ("auto" adds
+#                                    every other Gemini model `agy models` lists). Any model but the pre-registered one
+#                                    is a deviation: it is recorded in results/deviations.txt and reported separately.
 #
 # Runs on the CLIs' own sign-ins (Claude Code, Antigravity, Grok). API keys in the environment are
 # ignored for this run so nothing is billed to a key. Nothing is pushed, posted or published:
@@ -16,7 +20,10 @@ BENCH=$(cd "$(dirname "$0")" && pwd)
 ROOT=${BENCH_ROOT:-$HOME/oc-bench}
 RES=$ROOT/results
 CLI_VERSION=0.3.2
-LEAD_MODEL=gemini-4-argon-high
+PREREG_LEAD_MODEL=gemini-4-argon-high   # pre-registered Lead PM, and the Gemini cross-check judge's model
+LEAD_CANDIDATES=${LEAD_CANDIDATES:-$PREREG_LEAD_MODEL}
+LEAD_MODEL=$PREREG_LEAD_MODEL           # set by the preflight to the first candidate that answers
+GEMINI_JUDGE_MODEL=$PREREG_LEAD_MODEL
 ENGINEER_MODEL=opus
 SOLO_SIDE_MODEL=sonnet
 RUNS=${RUNS:-3}
@@ -27,6 +34,7 @@ SINGLE_TIMEOUT=${SINGLE_TIMEOUT:-1800}
 JUDGE_MODEL=opus
 JUDGE_TIMEOUT=${JUDGE_TIMEOUT:-900}
 CACHE=$ROOT/repos
+LIMIT_RE='usage limit|limit reached|rate.limit|quota|resource.exhausted|too many requests|credit balance|out of credits|exceeded your|try again (later|in)'
 mkdir -p "$ROOT/bin" "$ROOT/tool" "$RES" "$CACHE"
 
 say() { printf '%s\n' "$*" | tee -a "$RES/preflight.txt"; }
@@ -164,6 +172,13 @@ claude_ping() { # <alias>
   local out; out=$(cd "$ROOT" && with_timeout 180 "$REAL_CLAUDE" -p --model "$1" --strict-mcp-config --output-format json "Reply with the single word ok." 2>&1) || { echo "FAIL $(echo "$out" | tail -3)"; return 1; }
   echo "$out" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const j=JSON.parse(s);if(j.is_error)throw new Error(j.result);console.log(Object.keys(j.modelUsage||{}).join(", ")+" (answered: "+String(j.result).trim().slice(0,20)+")")}catch(e){console.log("FAIL "+e.message.slice(0,200));process.exit(1)}})'
 }
+agy_ping() { # <model>  Same shape as the Lead PM's call: plan mode, slash commands off. Prints the reason on failure.
+  local out; out=$(cd "$ROOT" && with_timeout 240 "$REAL_AGY" -p "Reply with the single word ok." --output-format text --print-timeout 180s \
+          --disable-slash-commands --mode plan --dangerously-skip-permissions --model "$1" 2>&1)
+  local code=$?
+  if [ $code = 0 ] && printf '%s\n' "$out" | grep -qiE '^[^[:alnum:]]*ok[^[:alnum:]]*$' && ! printf '%s' "$out" | grep -qiE "$LIMIT_RE"; then return 0; fi
+  printf '%s' "$out" | grep -v '^[[:space:]]*$' | tail -2 | tr '\n' ' ' | cut -c1-200; return 1
+}
 say "-- Claude Code: $("$REAL_CLAUDE" --version 2>&1 | head -1)"
 m=$(claude_ping "$ENGINEER_MODEL") || die "Claude Code did not answer on '$ENGINEER_MODEL': $m. Run 'claude' once and sign in with your plan, then rerun."
 say "   $ENGINEER_MODEL -> $m"
@@ -175,15 +190,32 @@ fi
 if has_arm mixed; then
   say "-- Antigravity (Gemini): $("$REAL_AGY" --version 2>&1 | head -1)"
   list=$("$REAL_AGY" models 2>/dev/null)
-  if [ -n "$list" ] && ! printf '%s\n' "$list" | grep -q "$LEAD_MODEL"; then
-    die "Antigravity does not list $LEAD_MODEL. It lists: $(printf '%s' "$list" | tr '\n' ' ' | cut -c1-300)"
+  cands=""
+  for c in $LEAD_CANDIDATES; do
+    if [ "$c" = auto ]; then
+      # Every other Gemini model agy lists, in its order; never a retired id the CLI would silently remap.
+      for m in $(printf '%s\n' "$list" | tr -s ' \t,()' '\n' | grep -E '^gemini-[0-9][0-9a-z.-]*$' | awk '!seen[$0]++'); do
+        [ "$m" = gemini-3.1-pro-high ] && continue
+        case " $cands " in *" $m "*) ;; *) cands="$cands $m";; esac
+      done
+    else
+      case " $cands " in *" $c "*) ;; *) cands="$cands $c";; esac
+    fi
+  done
+  LEAD_MODEL=""; tried=""
+  for c in $cands; do
+    if [ -n "$list" ] && ! printf '%s\n' "$list" | tr -s ' \t,()' '\n' | grep -qxF -- "$c"; then tried="$tried; $c: not listed by agy"; say "   $c -> not listed by agy models"; continue; fi
+    if out=$(agy_ping "$c"); then LEAD_MODEL=$c; break; fi
+    tried="$tried; $c: $out"
+    say "   $c -> no answer: $out"
+  done
+  [ -n "$LEAD_MODEL" ] || die "No Lead PM model answered${tried}. Open agy once and sign in, or wait for a quota to reset, then rerun."
+  say "   Lead PM $LEAD_MODEL in plan mode -> answered"
+  if [ "$LEAD_MODEL" != "$PREREG_LEAD_MODEL" ]; then
+    say "   DEVIATION: the pre-registered Lead PM $PREREG_LEAD_MODEL did not answer, so new mixed runs use $LEAD_MODEL."
+    dev="$(date '+%Y-%m-%d %H:%M %Z'): Lead PM (mixed arm) is $LEAD_MODEL for runs from now on; the pre-registered $PREREG_LEAD_MODEL did not answer (${tried#; }). Mixed runs are reported separately by Lead PM model."
+    grep -qsF "Lead PM (mixed arm) is $LEAD_MODEL " "$RES/deviations.txt" || echo "$dev" >> "$RES/deviations.txt"
   fi
-  # Same shape as the Lead PM's call: plan mode, slash commands off.
-  out=$(cd "$ROOT" && with_timeout 240 "$REAL_AGY" -p "Reply with the single word ok." --output-format text --print-timeout 180s \
-          --disable-slash-commands --mode plan --dangerously-skip-permissions --model "$LEAD_MODEL" 2>&1) \
-    || die "Antigravity refused the Lead PM's kind of call: $(echo "$out" | tail -3). Open agy once and sign in, then rerun."
-  printf '%s' "$out" | grep -qi ok || die "Antigravity answered something unexpected: $(echo "$out" | tail -2 | cut -c1-200)"
-  say "   $LEAD_MODEL in plan mode -> answered"
 
   say "-- Grok: $("$REAL_GROK" --version 2>&1 | head -1)"
   # On a resumed batch, keep the Grok model the batch started with, so the arm doesn't change midway.
@@ -212,6 +244,21 @@ if has_arm mixed; then
   [ $dc = 0 ] || die "council doctor found a seat that does not answer (above)."
 fi
 
+if [[ " $JUDGES " == *" gemini "* ]]; then
+  # The Gemini cross-check judge stays on its pre-registered model; if that has no quota, it is skipped, not swapped.
+  if jo=$(agy_ping "$GEMINI_JUDGE_MODEL"); then
+    say "-- Gemini judge $GEMINI_JUDGE_MODEL -> answered"
+    if grep -qsF "Gemini cross-check judge ($GEMINI_JUDGE_MODEL) did not answer" "$RES/deviations.txt" && ! grep -qsF "Gemini cross-check judge answered again" "$RES/deviations.txt"; then
+      echo "$(date '+%Y-%m-%d %H:%M %Z'): the Gemini cross-check judge answered again and judges every run it had missed." >> "$RES/deviations.txt"
+    fi
+  else
+    JUDGES=$(printf '%s' " $JUDGES " | sed 's/ gemini / /; s/^ *//; s/ *$//')
+    say "-- Gemini judge $GEMINI_JUDGE_MODEL did not answer ($jo), so it is skipped for this session; runs are scored by the Claude judge only."
+    dev="$(date '+%Y-%m-%d %H:%M %Z'): the Gemini cross-check judge ($GEMINI_JUDGE_MODEL) did not answer, so runs judged from now on have no Gemini cross-check until it does; it judges them when a later session reaches it."
+    grep -qsF "Gemini cross-check judge" "$RES/deviations.txt" || echo "$dev" >> "$RES/deviations.txt"
+  fi
+fi
+
 say ""
 say "Seats:"
 has_arm mixed && say "  mixed  = Lead PM $LEAD_MODEL (Antigravity), Chief Engineer $ENGINEER_MODEL (Claude Code), Chief Architect $GROK_MODEL (Grok, tools off)"
@@ -219,7 +266,7 @@ has_arm solo && say "  solo   = Lead PM $SOLO_SIDE_MODEL, Chief Engineer $ENGINE
 has_arm single && say "  single = one Claude Code agent on $ENGINEER_MODEL, plan mode, same review instructions"
 say "Judges: $JUDGES (Claude $JUDGE_MODEL is the pre-registered one)"
 { echo "date: $(date '+%Y-%m-%d %H:%M %Z')"; echo "open-council-cli: $CLI_VERSION"; echo "benchmark commit: $(git -C "$BENCH" log -1 --format=%H -- . 2>/dev/null)";
-  echo "arms: $ARMS"; echo "lead (mixed): $LEAD_MODEL"; echo "engineer: $ENGINEER_MODEL"; echo "architect (mixed): ${GROK_MODEL:-n/a}"; echo "solo side seats: $SOLO_SIDE_MODEL"; echo "judges: $JUDGES (claude = $JUDGE_MODEL, gemini = $LEAD_MODEL)"; } > "$RES/meta.txt"
+  echo "arms: $ARMS"; echo "lead (mixed): $LEAD_MODEL"; echo "engineer: $ENGINEER_MODEL"; echo "architect (mixed): ${GROK_MODEL:-n/a}"; echo "solo side seats: $SOLO_SIDE_MODEL"; echo "judges: $JUDGES (claude = $JUDGE_MODEL, gemini = $GEMINI_JUDGE_MODEL)"; echo "pre-registered lead (mixed): $PREREG_LEAD_MODEL"; } > "$RES/meta.txt"
 [ -n "${PREFLIGHT_ONLY:-}" ] && { say "Preflight passed."; exit 0; }
 
 # ---------------------------------------------------------------- judges
@@ -236,7 +283,7 @@ judge_run() { # <run dir> <task> <arm> <judge>
     node "$BENCH/lib/claude-json.cjs" "$jd/a.json" "$out/judge-calls.jsonl" "$JUDGE_MODEL" 0 $? > "$out/judge-$j.answer.txt" 2>/dev/null
   else
     (cd "$jd" && with_timeout "$JUDGE_TIMEOUT" "$REAL_AGY" -p "$(cat "$out/judge-$j.prompt.md")" --output-format text --print-timeout "${JUDGE_TIMEOUT}s" \
-        --disable-slash-commands --mode plan --dangerously-skip-permissions --model "$LEAD_MODEL") > "$out/judge-$j.answer.txt" 2> "$out/judge-$j.err"
+        --disable-slash-commands --mode plan --dangerously-skip-permissions --model "$GEMINI_JUDGE_MODEL") > "$out/judge-$j.answer.txt" 2> "$out/judge-$j.err"
   fi
   rm -rf "$jd"
   if grep -qiE "$LIMIT_RE" "$out/judge-$j.err" 2>/dev/null && ! grep -q '"issues"' "$out/judge-$j.answer.txt"; then touch "$RES/STOP"; fi
@@ -244,7 +291,6 @@ judge_run() { # <run dir> <task> <arm> <judge>
 }
 
 # ---------------------------------------------------------------- one run
-LIMIT_RE='usage limit|limit reached|rate.limit|quota|resource.exhausted|too many requests|credit balance|out of credits|exceeded your|try again (later|in)'
 # A run is finished when every judge has scored it.
 done_run() { local j; for j in $JUDGES; do grep -qs '"status": "OK"' "$1/judge-$j.json" || return 1; done; }
 run_job() { # <task> <arm> <n>
@@ -270,6 +316,7 @@ run_job() { # <task> <arm> <n>
       cp "$out/agent.err" "$out/cli.log"
     else
       write_config "$arm" "$w/.council/config.yml"
+      [ "$arm" = mixed ] && echo "$LEAD_MODEL" > "$out/lead-model"
       (cd "$w/app" && COUNCIL_HOME="$w/h" BENCH_CALLS_LOG="$out/calls.jsonl" with_timeout "$COUNCIL_TIMEOUT" node "$COUNCIL_JS" review --base main --no-open) > "$out/cli.log" 2>&1
       code=$?
       local sess; sess=$(ls -d "$w/h"/projects/*/sessions/* 2>/dev/null | head -1)

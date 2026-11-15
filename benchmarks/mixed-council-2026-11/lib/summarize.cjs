@@ -30,8 +30,11 @@ for (const t of tasks) {
     const claude = calls.filter(c => c.vendor === 'claude');
     const costs = claude.map(c => c.cost_usd).filter(x => typeof x === 'number');
     const sections = json(path.join(d, 'sections.json')) || [];
+    // The Lead PM model a mixed run used: what its Gemini calls were made on, else what the runner recorded.
+    const lead = m[1] !== 'mixed' ? null
+      : (calls.find(c => c.vendor === 'gemini' && c.model) || {}).model || read(path.join(d, 'lead-model')).trim() || 'unknown';
     runs.push({
-      task: t.id, arm: m[1], n: +m[2], score, gemini: json(path.join(d, 'judge-gemini.json')), sections,
+      task: t.id, arm: m[1], n: +m[2], lead, score, gemini: json(path.join(d, 'judge-gemini.json')), sections,
       seconds: Number(read(path.join(d, 'seconds')).trim()) || null,
       claude_cost: costs.length ? costs.reduce((a, b) => a + b, 0) : null,
       claude_models: [...new Set(claude.flatMap(c => c.models || []))],
@@ -43,7 +46,9 @@ for (const t of tasks) {
   }
 }
 const armsSeen = ARMS.filter(a => runs.some(r => r.arm === a));
-const of = (arm, judge = 'claude') => runs.filter(r => r.arm === arm).map(r => (judge === 'claude' ? r.score : r.gemini)).filter(s => s && s.status === 'OK');
+// "mixed@<model>" is the mixed arm's runs on one Lead PM model (reported separately after a model swap).
+const inArm = (r, arm) => (arm.includes('@') ? r.arm === arm.split('@')[0] && r.lead === arm.slice(arm.indexOf('@') + 1) : r.arm === arm);
+const of = (arm, judge = 'claude') => runs.filter(r => inArm(r, arm)).map(r => (judge === 'claude' ? r.score : r.gemini)).filter(s => s && s.status === 'OK');
 
 // Pooled recall over (run, known issue) pairs.
 function pooled(arm, pick, judge = 'claude') {
@@ -57,7 +62,7 @@ const HC = g => g.core !== undefined && (g.severity === 'High' || g.severity ===
 // Per known issue: the share of an arm's runs that found it.
 function rates(arm, judge = 'claude') {
   const out = {};
-  for (const r of runs.filter(x => x.arm === arm)) {
+  for (const r of runs.filter(x => inArm(x, arm))) {
     const s = judge === 'claude' ? r.score : r.gemini;
     if (!s || s.status !== 'OK') continue;
     for (const [id, g] of Object.entries(s.found)) {
@@ -77,15 +82,19 @@ function signTest(wins, losses) {
   let p = 0; for (let i = 0; i <= k; i++) p += Math.exp(lc(n, i) - n * Math.log(2));
   return Math.min(1, 2 * p);
 }
-function compare(x, y, judge = 'claude') {
+// matched: pool both sides only over the known issues both were scored on, so an arm that ran on fewer
+// tasks (the mixed arm on one Lead PM model) is set against the other arm on those same tasks only.
+function compare(x, y, judge = 'claude', matched = false) {
   const rx = rates(x, judge), ry = rates(y, judge);
   let w = 0, l = 0, tie = 0;
+  const a = { f: 0, n: 0 }, b = { f: 0, n: 0 };
   for (const k of Object.keys(rx)) {
     if (!ry[k]) continue;
     const d = rx[k].f / rx[k].n - ry[k].f / ry[k].n;
     if (d > 1e-9) w++; else if (d < -1e-9) l++; else tie++;
+    a.f += rx[k].f; a.n += rx[k].n; b.f += ry[k].f; b.n += ry[k].n;
   }
-  const a = pooled(x, CORE, judge), b = pooled(y, CORE, judge);
+  if (!matched) { Object.assign(a, pooled(x, CORE, judge)); Object.assign(b, pooled(y, CORE, judge)); }
   return `${x} ${a.f}/${a.n} (${pct(a.f, a.n)}) vs ${y} ${b.f}/${b.n} (${pct(b.f, b.n)}). Known issues ${x} found more often: ${w}; ${y} more often: ${l}; same: ${tie}. Sign test two-sided p = ${signTest(w, l).toFixed(3)}`;
 }
 
@@ -93,6 +102,10 @@ const L = [];
 const meta = read(path.join(res, 'meta.txt'));
 L.push('# Mixed council vs one agent on real pull requests: results', '');
 if (meta) L.push('```', meta.trim(), '```', '');
+const deviations = read(path.join(res, 'deviations.txt')).trim();
+if (deviations) L.push('## Deviations from the pre-registration', '', ...deviations.split('\n').map(x => `- ${x}`), '');
+const kept = read(path.join(res, 'kept-check.txt')).split('\n')[2];
+if (kept) L.push(`Check of runs judged before the checkout fix: ${kept} (details in results/kept-check.txt).`, '');
 L.push(`${runs.length} judged runs, ${unscored.length} not scored yet (errors, timeouts, usage limits or judge failures; the same command re-runs those, and they never count as misses).`, '');
 
 L.push('## Known issues found (primary: core issues, Claude Opus judge)', '', `| Task | Core issues | ${armsSeen.map(a => `${a} (per run)`).join(' | ')} |`, `| --- | --- | ${armsSeen.map(() => '---').join(' | ')} |`);
@@ -103,6 +116,17 @@ for (const t of tasks) {
 L.push(`| **All** | | ${armsSeen.map(a => { const p = pooled(a, CORE); return `**${p.f}/${p.n} (${pct(p.f, p.n)})**`; }).join(' | ')} |`, '');
 for (const [x, y] of [['mixed', 'single'], ['mixed', 'solo'], ['solo', 'single']]) if (armsSeen.includes(x) && armsSeen.includes(y)) L.push(`- ${compare(x, y)}`);
 L.push('');
+const leads = [...new Set(runs.filter(r => r.arm === 'mixed').map(r => r.lead))];
+if (leads.length > 1) {
+  const pre = (meta.match(/^pre-registered lead \(mixed\): (\S+)/m) || [])[1] || 'gemini-4-argon-high';
+  leads.sort((a, b) => (b === pre) - (a === pre));
+  L.push('## Mixed arm by Lead PM model', '', `The Lead PM model changed during the batch (see Deviations). Each line compares only that model's mixed runs with the single agent's runs on the same tasks, pooled over the known issues both were scored on, so a model that ran only some tasks is not set against the single agent's whole set. ${pre} is the pre-registered model. The pooled mixed line above mixes both models; these are the comparable figures.`, '');
+  for (const m of leads) {
+    const k = `mixed@${m}`, nRuns = of(k).length;
+    L.push(`- **Lead PM ${m}${m === pre ? ' (pre-registered)' : ''}**, ${nRuns} run${nRuns === 1 ? '' : 's'}: ${armsSeen.includes('single') ? compare(k, 'single', 'claude', true) : (p => `${p.f}/${p.n} (${pct(p.f, p.n)})`)(pooled(k, CORE))}`);
+  }
+  L.push('');
+}
 
 L.push('## Secondary measures', '', `| Measure | ${armsSeen.join(' | ')} |`, `| --- | ${armsSeen.map(() => '---').join(' | ')} |`);
 const row = (name, f) => L.push(`| ${name} | ${armsSeen.map(f).join(' | ')} |`);
@@ -164,7 +188,7 @@ L.push('## Every run', '', 'Each line lists the known issues the Claude judge fo
 for (const r of runs.sort((a, b) => a.task.localeCompare(b.task) || a.arm.localeCompare(b.arm) || a.n - b.n)) {
   const s = r.score;
   const hits = Object.entries(s.found).filter(([, g]) => g.found);
-  L.push(`- **${r.task} ${r.arm} ${r.n}: ${s.core_found}/${s.core_total} core** (${mins(r.seconds)}${r.claude_cost != null ? `, ${money(r.claude_cost)}` : ''})${hits.length ? '' : ': none found'}`);
+  L.push(`- **${r.task} ${r.arm} ${r.n}${r.lead ? ` (Lead PM ${r.lead})` : ''}: ${s.core_found}/${s.core_total} core** (${mins(r.seconds)}${r.claude_cost != null ? `, ${money(r.claude_cost)}` : ''})${hits.length ? '' : ': none found'}`);
   for (const [id, g] of hits) L.push(`  - ${id} [${g.severity}${g.core ? '' : ', not core'}] in ${g.sections.join(', ')}: "${g.quote.replace(/\s+/g, ' ').slice(0, 160)}"`);
 }
 const preflight = read(path.join(res, 'preflight.txt'));
