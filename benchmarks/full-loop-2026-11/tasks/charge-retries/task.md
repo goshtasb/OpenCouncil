@@ -1,0 +1,1 @@
+Checkout is failing for some customers during the gateway's busy hours: the charge times out and the customer has to try again by hand. Make `chargeCustomer` retry when the gateway times out (up to 3 retries) so these go through without the customer doing anything.
