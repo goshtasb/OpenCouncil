@@ -149,3 +149,50 @@ test('preflight: with no candidates given it only tries the pre-registered model
   assert.match(r.out, /No Lead PM model answered; gemini-4-argon-high: Individual quota reached/);
   assert.doesNotMatch(r.out, /flash/);
 });
+
+// ------------------------------------------------------------------ fixture.sh: no background gc in the cache
+test('fixture: the shared cache has git auto-gc off, so a detached gc cannot delete objects mid-clone', () => {
+  const dir = tmp('bench-fx-');
+  const src = path.join(dir, 'src');
+  const g = (cwd, ...a) => execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', '-c', 'gc.auto=0', ...a], { cwd, stdio: 'pipe' }).toString().trim();
+  fs.mkdirSync(src);
+  g(src, 'init', '-q', '-b', 'main');
+  fs.writeFileSync(path.join(src, 'a.txt'), 'one\n');
+  g(src, 'add', '-A'); g(src, 'commit', '-qm', 'base');
+  const base = g(src, 'rev-parse', 'HEAD');
+  fs.writeFileSync(path.join(src, 'a.txt'), 'two\n');
+  g(src, 'add', '-A'); g(src, 'commit', '-qm', 'head');
+  const head = g(src, 'rev-parse', 'HEAD');
+  g(src, 'config', 'uploadpack.allowAnySHA1InWant', 'true');
+  const tasksFile = path.join(dir, 'tasks.json');
+  fs.writeFileSync(tasksFile, JSON.stringify({ tasks: [{ id: 't1', title: 'One', source: { repo: `file://${src}`, base_sha: base, head_sha: head } }] }));
+  const cache = path.join(dir, 'cache');
+  execFileSync('bash', [path.join(BENCH, 'lib', 'fixture.sh'), tasksFile, 't1', cache, path.join(dir, 'app')], { stdio: 'pipe' });
+  assert.equal(g(path.join(cache, 'templates', 't1'), 'config', 'gc.auto'), '0');
+  assert.equal(execFileSync('git', ['-C', path.join(cache, 'src.git'), 'config', 'gc.auto']).toString().trim(), '0');
+  assert.equal(g(path.join(dir, 'app'), 'diff', '--name-only', 'main...HEAD'), 'a.txt');
+});
+
+// ------------------------------------------------------------------ run.sh: a sign-in prompt from Antigravity is caught
+test('the Antigravity shim keeps stderr, and a sign-in prompt in it matches SIGNIN_RE', { skip: !hasPerl && 'needs perl' }, () => {
+  const dir = tmp('bench-signin-');
+  const bin = stubs(dir);
+  // Preflight writes the logging shims into <root>/bin.
+  const r = spawnSync('bash', [path.join(BENCH, 'run.sh')], { env: { PATH: `${bin}:${process.env.PATH}`, HOME: dir, BENCH_ROOT: path.join(dir, 'root'), GROK_BIN: path.join(bin, 'grok'), PREFLIGHT_ONLY: '1' }, encoding: 'utf8', timeout: 120000 });
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  // Now make the real agy ask for a sign-in, and call it through the shim the way the council does.
+  fs.writeFileSync(path.join(bin, 'agy'), '#!/bin/bash\necho "Go to https://accounts.google.com/o/oauth2/auth?x=1 and paste the code here:" >&2\nexit 1\n');
+  const out = path.join(dir, 'run');
+  fs.mkdirSync(out);
+  const s = spawnSync(path.join(dir, 'root', 'bin', 'agy'), ['-p', 'hello', '--model', 'm'], { env: { ...process.env, BENCH_CALLS_LOG: path.join(out, 'calls.jsonl') }, encoding: 'utf8' });
+  assert.equal(s.status, 1);
+  assert.match(s.stderr, /accounts\.google\.com/, 'stderr still reaches the council');
+  const kept = fs.readFileSync(path.join(out, 'agy-stderr.log'), 'utf8');
+  const re = fs.readFileSync(path.join(BENCH, 'run.sh'), 'utf8').match(/^SIGNIN_RE='(.*)'$/m)[1];
+  assert.equal(spawnSync('grep', ['-qiE', re, path.join(out, 'agy-stderr.log')]).status, 0, kept);
+  // A review that only talks about OAuth on stdout is not a sign-in prompt: stdout isn't kept.
+  fs.writeFileSync(path.join(bin, 'agy'), '#!/bin/bash\necho "The OAuth authorization code is not checked against accounts.google.com state."\n');
+  fs.rmSync(path.join(out, 'agy-stderr.log'));
+  spawnSync(path.join(dir, 'root', 'bin', 'agy'), ['-p', 'hello'], { env: { ...process.env, BENCH_CALLS_LOG: path.join(out, 'calls.jsonl') } });
+  assert.equal(spawnSync('grep', ['-qiE', re, path.join(out, 'agy-stderr.log')]).status, 1);
+});

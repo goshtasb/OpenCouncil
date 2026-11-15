@@ -34,6 +34,8 @@ SINGLE_TIMEOUT=${SINGLE_TIMEOUT:-1800}
 JUDGE_MODEL=opus
 JUDGE_TIMEOUT=${JUDGE_TIMEOUT:-900}
 CACHE=$ROOT/repos
+# Antigravity asking to sign in again (it opens a browser page and waits for a code it can't get here).
+SIGNIN_RE='accounts\.google\.com|paste (this|the) code|authorization code|(sign|log) ?in (again|required|to continue)|not (signed|logged) in|re-?authenticat'
 LIMIT_RE='usage limit|limit reached|rate.limit|quota|resource.exhausted|too many requests|credit balance|out of credits|exceeded your|try again (later|in)'
 mkdir -p "$ROOT/bin" "$ROOT/tool" "$RES" "$CACHE"
 
@@ -123,7 +125,9 @@ case " \$* " in *" -p "*) ;; *) exec "\$REAL" "\$@";; esac
 [ -n "\${BENCH_CALLS_LOG:-}" ] || exec "\$REAL" "\$@"
 model=""; mode=""; prev=""
 for a in "\$@"; do [ "\$prev" = --model ] && model=\$a; [ "\$prev" = --mode ] && mode=\$a; prev=\$a; done
-t0=\$(date +%s); "\$REAL" "\$@"; code=\$?
+# stderr is passed on unchanged and also kept next to the run's call log, where run.sh looks for a sign-in prompt.
+t0=\$(date +%s); err=\$(mktemp); "\$REAL" "\$@" 2> "\$err"; code=\$?
+cat "\$err" >&2; cat "\$err" >> "\$(dirname "\$BENCH_CALLS_LOG")/agy-stderr.log"; rm -f "\$err"
 printf '{"vendor":"gemini","model":"%s","mode":"%s","seconds":%s,"code":%s}\n' "\$model" "\$mode" "\$(( \$(date +%s) - t0 ))" "\$code" >> "\$BENCH_CALLS_LOG"
 exit \$code
 SHIM
@@ -329,6 +333,7 @@ run_job() { # <task> <arm> <n>
       local st=ERROR
       [ "$code" = 142 ] && st=TIMEOUT
       if grep -qiE "$LIMIT_RE" "$out/cli.log" "$out/calls.jsonl" 2>/dev/null && [ "$st" = ERROR ]; then st=LIMIT; touch "$RES/STOP"; fi
+      if grep -qiE "$SIGNIN_RE" "$out/agy-stderr.log" 2>/dev/null; then st=SIGNIN; echo signin > "$RES/STOP"; fi
       local detail; detail=$(grep -v '^\s*$' "$out/cli.log" 2>/dev/null | tail -1 | cut -c1-160 | tr -d '"\\')
       printf '{"status":"%s","detail":"exit %s: %s"}\n' "$st" "$code" "$detail" > "$out/score.json"
       echo "$task $arm $n: $st (exit $code) after $(cat "$out/seconds")s"
@@ -379,7 +384,10 @@ wait
 
 node "$BENCH/lib/summarize.cjs" "$RES" "$BENCH" > /dev/null
 echo
-if [ -f "$RES/STOP" ]; then
+if grep -qs signin "$RES/STOP"; then
+  echo "Antigravity asked to sign in again, so the batch stopped early. In a new Terminal window run: agy"
+  echo "Sign in there, then run the same command: it picks up where it stopped."
+elif [ -f "$RES/STOP" ]; then
   echo "A seat hit a usage limit, so the batch stopped early. Wait for the limit to reset, then run the same command: it picks up where it stopped."
 fi
 echo "Summary: $ROOT/summary.md  (drag this file into the chat)"

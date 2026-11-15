@@ -35,8 +35,16 @@ if ! ready; then
   trap 'rm -rf "$L"' EXIT
 fi
 
+# git's automatic housekeeping (gc --auto) runs detached after a commit or fetch that leaves many loose
+# objects, and outlives the lock. It packs and then deletes loose objects, so a run cloning the template
+# (or archiving from the bare repo) while it runs fails with "failed to copy file to ...: No such file or
+# directory" or missing objects. It is off for the cache, and a clone waits out one already running.
+gc_busy() { [ -f "$1/gc.pid" ] && kill -0 "$(awk '{print $1}' "$1/gc.pid" 2>/dev/null)" 2>/dev/null; }
+wait_gc() { local i=0; while gc_busy "$1" && [ $i -lt 600 ]; do sleep 1; i=$((i + 1)); done; }
 build() {
   [ -d "$G" ] || git init -q --bare "$G"
+  git -C "$G" config gc.auto 0; git -C "$G" config maintenance.auto false
+  wait_gc "$G"
   for sha in "$BASE" "$HEAD"; do
     git -C "$G" cat-file -e "$sha^{commit}" 2>/dev/null && continue
     n=0
@@ -47,6 +55,7 @@ build() {
   done
   rm -rf "$T"; mkdir -p "$T"
   git -C "$T" init -q -b main
+  git -C "$T" config gc.auto 0; git -C "$T" config maintenance.auto false
   git -C "$T" config user.name "Benchmark"; git -C "$T" config user.email bench@example.invalid
   git -C "$T" config commit.gpgsign false; git -C "$T" config core.autocrlf false
   # Store every file byte for byte: the repo's own .gitattributes (line endings, LFS filters) must not rewrite it.
@@ -72,6 +81,7 @@ fi
 if [ -d "$L" ] && [ "$(cat "$L/pid" 2>/dev/null)" = $$ ]; then rm -rf "$L"; trap - EXIT; fi
 
 rm -rf "$DEST"
+wait_gc "$T/.git"
 git clone -q -b pr "$T" "$DEST"
 git -C "$DEST" branch -q main origin/main
 git -C "$DEST" remote remove origin
