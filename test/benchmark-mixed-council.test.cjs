@@ -149,3 +149,88 @@ test('preflight: with no candidates given it only tries the pre-registered model
   assert.match(r.out, /No Lead PM model answered; gemini-4-argon-high: Individual quota reached/);
   assert.doesNotMatch(r.out, /flash/);
 });
+
+// ------------------------------------------------------------------ fixture.sh: no background gc in the cache
+test('fixture: the shared cache has git auto-gc off, so a detached gc cannot delete objects mid-clone', () => {
+  const dir = tmp('bench-fx-');
+  const src = path.join(dir, 'src');
+  const g = (cwd, ...a) => execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', '-c', 'gc.auto=0', ...a], { cwd, stdio: 'pipe' }).toString().trim();
+  fs.mkdirSync(src);
+  g(src, 'init', '-q', '-b', 'main');
+  fs.writeFileSync(path.join(src, 'a.txt'), 'one\n');
+  g(src, 'add', '-A'); g(src, 'commit', '-qm', 'base');
+  const base = g(src, 'rev-parse', 'HEAD');
+  fs.writeFileSync(path.join(src, 'a.txt'), 'two\n');
+  g(src, 'add', '-A'); g(src, 'commit', '-qm', 'head');
+  const head = g(src, 'rev-parse', 'HEAD');
+  g(src, 'config', 'uploadpack.allowAnySHA1InWant', 'true');
+  const tasksFile = path.join(dir, 'tasks.json');
+  fs.writeFileSync(tasksFile, JSON.stringify({ tasks: [{ id: 't1', title: 'One', source: { repo: `file://${src}`, base_sha: base, head_sha: head } }] }));
+  const cache = path.join(dir, 'cache');
+  execFileSync('bash', [path.join(BENCH, 'lib', 'fixture.sh'), tasksFile, 't1', cache, path.join(dir, 'app')], { stdio: 'pipe' });
+  assert.equal(g(path.join(cache, 'templates', 't1'), 'config', 'gc.auto'), '0');
+  assert.equal(execFileSync('git', ['-C', path.join(cache, 'src.git'), 'config', 'gc.auto']).toString().trim(), '0');
+  assert.equal(g(path.join(dir, 'app'), 'diff', '--name-only', 'main...HEAD'), 'a.txt');
+});
+
+// ------------------------------------------------------------------ run.sh: a sign-in prompt from Antigravity is caught
+function agyShim() {
+  const dir = tmp('bench-signin-');
+  const bin = stubs(dir);
+  // Preflight writes the logging shims into <root>/bin.
+  const r = spawnSync('bash', [path.join(BENCH, 'run.sh')], { env: { PATH: `${bin}:${process.env.PATH}`, HOME: dir, BENCH_ROOT: path.join(dir, 'root'), GROK_BIN: path.join(bin, 'grok'), PREFLIGHT_ONLY: '1' }, encoding: 'utf8', timeout: 120000 });
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  const out = path.join(dir, 'run');
+  fs.mkdirSync(out);
+  return { dir, bin, out, shim: path.join(dir, 'root', 'bin', 'agy'), env: { ...process.env, BENCH_CALLS_LOG: path.join(out, 'calls.jsonl') } };
+}
+const signinRe = () => execFileSync('bash', ['-c', `. "$1"; printf %s "$SIGNIN_RE"`, '_', path.join(BENCH, 'lib', 'classify.sh')]).toString();
+const alive = pid => { try { process.kill(pid, 0); return true; } catch { return false; } };
+
+test('an agy that waits at a sign-in prompt: the prompt is logged as it arrives, and killing the shim stops agy too', { skip: !hasPerl && 'needs perl' }, async () => {
+  const s = agyShim();
+  const pidFile = path.join(s.dir, 'agy.pid');
+  fs.writeFileSync(path.join(s.bin, 'agy'), `#!/bin/bash\necho $$ > "${pidFile}"\necho "Go to https://accounts.google.com/o/oauth2/auth?x=1 and paste the code here:" >&2\nexec sleep 60\n`);
+  const { spawn } = require('child_process');
+  // The council runs the shim through execa with a timeout, which sends SIGTERM to the shim alone.
+  const child = spawn(s.shim, ['-p', 'hello', '--model', 'm'], { env: s.env, stdio: ['ignore', 'pipe', 'pipe'] });
+  let stderr = '';
+  child.stderr.on('data', d => { stderr += d; });
+  const log = path.join(s.out, 'agy-stderr.log');
+  for (let i = 0; i < 100 && !(fs.existsSync(log) && fs.readFileSync(log, 'utf8').includes('paste the code')); i++) await new Promise(r => setTimeout(r, 100));
+  assert.match(fs.readFileSync(log, 'utf8'), /paste the code/, 'logged while agy is still waiting');
+  const agyPid = Number(fs.readFileSync(pidFile, 'utf8'));
+  child.kill('SIGTERM');
+  const code = await new Promise(r => child.on('close', c => r(c)));
+  assert.equal(code, 143);
+  for (let i = 0; i < 50 && alive(agyPid); i++) await new Promise(r => setTimeout(r, 100));
+  assert.equal(alive(agyPid), false, 'agy is not left running');
+  assert.match(stderr, /accounts\.google\.com/, 'stderr still reaches the council');
+  assert.equal(spawnSync('grep', ['-qiE', signinRe(), log]).status, 0);
+});
+
+test('an agy that answers normally: stdout is not logged, so review text about OAuth is not a sign-in prompt', { skip: !hasPerl && 'needs perl' }, () => {
+  const s = agyShim();
+  fs.writeFileSync(path.join(s.bin, 'agy'), '#!/bin/bash\necho "The OAuth authorization code is not checked against accounts.google.com state."\n');
+  const r = spawnSync(s.shim, ['-p', 'hello'], { env: s.env, encoding: 'utf8' });
+  assert.equal(r.status, 0);
+  assert.match(r.stdout, /authorization code/);
+  const log = path.join(s.out, 'agy-stderr.log');
+  assert.equal(fs.existsSync(log) ? fs.readFileSync(log, 'utf8') : '', '');
+  assert.match(fs.readFileSync(path.join(s.out, 'calls.jsonl'), 'utf8'), /"vendor":"gemini".*"code":0/);
+});
+
+test('classify_failure: a sign-in prompt stops the batch as SIGNIN; a usage limit as LIMIT; anything else carries on', () => {
+  const classify = (files, code) => {
+    const out = tmp('bench-cls-');
+    const res = tmp('bench-res-');
+    for (const [f, body] of Object.entries(files)) fs.writeFileSync(path.join(out, f), body);
+    const st = execFileSync('bash', ['-c', '. "$1"; classify_failure "$2" "$3" "$4"', '_', path.join(BENCH, 'lib', 'classify.sh'), out, String(code), res]).toString().trim();
+    const stop = fs.existsSync(path.join(res, 'STOP')) ? fs.readFileSync(path.join(res, 'STOP'), 'utf8') : null;
+    return { st, stop };
+  };
+  assert.deepEqual(classify({ 'cli.log': 'Timed out\n', 'agy-stderr.log': 'Paste this code into your application to complete authentication:\n' }, 1), { st: 'SIGNIN', stop: 'signin\n' });
+  assert.deepEqual(classify({ 'cli.log': 'Error 429: quota exceeded\n' }, 1), { st: 'LIMIT', stop: '' });
+  assert.deepEqual(classify({ 'cli.log': 'Timed out\n' }, 1), { st: 'ERROR', stop: null });
+  assert.deepEqual(classify({ 'cli.log': '' }, 142), { st: 'TIMEOUT', stop: null });
+});

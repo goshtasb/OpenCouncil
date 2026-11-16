@@ -34,7 +34,8 @@ SINGLE_TIMEOUT=${SINGLE_TIMEOUT:-1800}
 JUDGE_MODEL=opus
 JUDGE_TIMEOUT=${JUDGE_TIMEOUT:-900}
 CACHE=$ROOT/repos
-LIMIT_RE='usage limit|limit reached|rate.limit|quota|resource.exhausted|too many requests|credit balance|out of credits|exceeded your|try again (later|in)'
+# SIGNIN_RE, LIMIT_RE and classify_failure.
+. "$BENCH/lib/classify.sh"
 mkdir -p "$ROOT/bin" "$ROOT/tool" "$RES" "$CACHE"
 
 say() { printf '%s\n' "$*" | tee -a "$RES/preflight.txt"; }
@@ -123,7 +124,13 @@ case " \$* " in *" -p "*) ;; *) exec "\$REAL" "\$@";; esac
 [ -n "\${BENCH_CALLS_LOG:-}" ] || exec "\$REAL" "\$@"
 model=""; mode=""; prev=""
 for a in "\$@"; do [ "\$prev" = --model ] && model=\$a; [ "\$prev" = --mode ] && mode=\$a; prev=\$a; done
-t0=\$(date +%s); "\$REAL" "\$@"; code=\$?
+# stderr is passed on unchanged and also written, as it arrives, next to the run's call log, where run.sh
+# looks for a sign-in prompt. agy runs in the background so that when the council's seat timeout kills this
+# shim, the trap stops agy too instead of leaving it waiting for a sign-in.
+t0=\$(date +%s)
+"\$REAL" "\$@" <&0 2> >(tee -a "\$(dirname "\$BENCH_CALLS_LOG")/agy-stderr.log" >&2) & pid=\$!
+trap 'kill \$pid 2>/dev/null; wait \$pid 2>/dev/null; exit 143' TERM INT HUP
+wait \$pid; code=\$?
 printf '{"vendor":"gemini","model":"%s","mode":"%s","seconds":%s,"code":%s}\n' "\$model" "\$mode" "\$(( \$(date +%s) - t0 ))" "\$code" >> "\$BENCH_CALLS_LOG"
 exit \$code
 SHIM
@@ -326,9 +333,7 @@ run_job() { # <task> <arm> <n>
     echo "$code" > "$out/exit"; echo $(( $(date +%s) - t0 )) > "$out/seconds"
     rm -rf "$w"
     if [ "$code" != 0 ]; then
-      local st=ERROR
-      [ "$code" = 142 ] && st=TIMEOUT
-      if grep -qiE "$LIMIT_RE" "$out/cli.log" "$out/calls.jsonl" 2>/dev/null && [ "$st" = ERROR ]; then st=LIMIT; touch "$RES/STOP"; fi
+      local st; st=$(classify_failure "$out" "$code" "$RES")
       local detail; detail=$(grep -v '^\s*$' "$out/cli.log" 2>/dev/null | tail -1 | cut -c1-160 | tr -d '"\\')
       printf '{"status":"%s","detail":"exit %s: %s"}\n' "$st" "$code" "$detail" > "$out/score.json"
       echo "$task $arm $n: $st (exit $code) after $(cat "$out/seconds")s"
@@ -379,7 +384,10 @@ wait
 
 node "$BENCH/lib/summarize.cjs" "$RES" "$BENCH" > /dev/null
 echo
-if [ -f "$RES/STOP" ]; then
+if grep -qs signin "$RES/STOP"; then
+  echo "Antigravity asked to sign in again, so the batch stopped early. In a new Terminal window run: agy"
+  echo "Sign in there, then run the same command: it picks up where it stopped."
+elif [ -f "$RES/STOP" ]; then
   echo "A seat hit a usage limit, so the batch stopped early. Wait for the limit to reset, then run the same command: it picks up where it stopped."
 fi
 echo "Summary: $ROOT/summary.md  (drag this file into the chat)"
