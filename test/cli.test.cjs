@@ -65,6 +65,25 @@ test('backlog list --json prints the items as a JSON array, and [] when empty', 
   ]);
 });
 
+test('status --json prints the sessions as a JSON array, and [] when empty', () => {
+  const repo = makeRepo();
+  const empty = run(repo, 'status', '--json');
+  assert.equal(empty.status, 0, empty.stderr);
+  assert.deepEqual(JSON.parse(empty.stdout), []);
+  assert.doesNotMatch(empty.stdout, /No sessions/);
+
+  const opened = run(repo, 'open', 'my-slug', '--task', 'x', '--quick');
+  assert.equal(opened.status, 0, opened.stderr);
+  const id = opened.stdout.trim();
+  const r = run(repo, 'status', '--json');
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(JSON.parse(r.stdout), [{ session: id, status: 'OPEN' }]);
+
+  // The plain output is unchanged: one line per session, and the single-session view stays JSON.
+  assert.match(run(repo, 'status').stdout, new RegExp(`${id}\\s+OPEN`));
+  assert.match(run(repo, 'status', id, '--json').stdout, /"status": "OPEN"/);
+});
+
 const writeConfig = (repo, yml) => {
   fs.mkdirSync(path.join(repo, '.council'), { recursive: true });
   fs.writeFileSync(path.join(repo, '.council', 'config.yml'), yml);
