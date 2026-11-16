@@ -46,6 +46,10 @@ if ! mkdir "$LOCK" 2>/dev/null; then
 fi
 echo $$ > "$LOCK/pid"
 trap 'rm -rf "$LOCK"' EXIT
+# Antigravity asking to sign in again. Its error output is read with the broad pattern; its answers (which are
+# model text) only with the strict one, which names Google's sign-in page or the CLI's own sign-in wording.
+SIGNIN_RE='accounts\.google\.com|paste (this|the) code|authorization code|to complete authentication|(sign|log) ?in (again|required|to continue)|not (signed|logged) in|re-?authenticat'
+SIGNIN_STRICT_RE='accounts\.google\.com/o/oauth|paste (this|the) code|to complete authentication|(sign|log) ?in (again|required|to continue)|not (signed|logged) in to antigravity'
 LIMIT_RE='usage limit|limit reached|hit your (usage |weekly |session |daily )?limit|weekly limit|rate.?limit|quota|resource.?exhausted|too many requests|credit balance|out of credits|exceeded your|try again (later|in)'
 
 say() { printf '%s\n' "$*" | tee -a "$RES/preflight.txt"; }
@@ -115,13 +119,27 @@ case " \$* " in *" -p "*) ;; *) exec "\$REAL" "\$@";; esac
 [ -n "\${BENCH_CALLS_LOG:-}" ] || exec "\$REAL" "\$@"
 model=""; prev=""
 for a in "\$@"; do [ "\$prev" = --model ] && model=\$a; prev=\$a; done
-# stderr is passed on unchanged and also written, as it arrives, next to the run's call log, where run.sh looks
-# for a usage limit or a sign-in prompt. agy runs in the background so that when the council's seat timeout
-# kills this shim, the trap stops agy too instead of leaving it waiting for a sign-in.
+D=\$(dirname "\$BENCH_CALLS_LOG")
+# Once one call has met a sign-in prompt the batch is stopping: no further call is made, so no further sign-in
+# page opens, and the run fails (unscored) on its next Lead PM call.
+if grep -qs signin "\${BENCH_STOP_FILE:-/nonexistent}"; then
+  echo "Antigravity is not signed in: call skipped, the batch is stopping for a sign-in." | tee -a "\$D/agy-stderr.log" >&2
+  printf '{"vendor":"gemini","model":"%s","seconds":0,"code":1,"skipped":"signin"}\n' "\$model" >> "\$BENCH_CALLS_LOG"
+  exit 1
+fi
+# stdout and stderr are passed on unchanged and also written, as they arrive, next to the run's call log, where
+# run.sh looks for a usage limit or a sign-in prompt. stdin is empty, so agy can't sit waiting for a code typed in.
+# agy runs in the background so that when the council's seat timeout kills this shim, the trap stops agy too.
+signin_check() {
+  if grep -qiE '$SIGNIN_RE' "\$D/agy-stderr.log" 2>/dev/null || grep -qiE '$SIGNIN_STRICT_RE' "\$D/agy-stdout.log" 2>/dev/null; then
+    [ -n "\${BENCH_STOP_FILE:-}" ] && echo signin > "\$BENCH_STOP_FILE"
+  fi
+}
 t0=\$(date +%s)
-"\$REAL" "\$@" <&0 2> >(tee -a "\$(dirname "\$BENCH_CALLS_LOG")/agy-stderr.log" >&2) & pid=\$!
-trap 'kill \$pid 2>/dev/null; wait \$pid 2>/dev/null; exit 143' TERM INT HUP
+"\$REAL" "\$@" < /dev/null > >(tee -a "\$D/agy-stdout.log") 2> >(tee -a "\$D/agy-stderr.log" >&2) & pid=\$!
+trap 'kill \$pid 2>/dev/null; wait \$pid 2>/dev/null; signin_check; exit 143' TERM INT HUP
 wait \$pid; code=\$?
+signin_check
 printf '{"vendor":"gemini","model":"%s","seconds":%s,"code":%s}\n' "\$model" "\$(( \$(date +%s) - t0 ))" "\$code" >> "\$BENCH_CALLS_LOG"
 exit \$code
 SHIM
@@ -186,8 +204,10 @@ if has_arm mixed; then
   list=$("$REAL_AGY" models 2>/dev/null)
   agy_ping() { # <model>  Same shape as the Lead PM's call: plan mode, slash commands off. Prints the reason on failure.
     local out; out=$(cd "$ROOT" && with_timeout 240 "$REAL_AGY" -p "Reply with the single word ok." --output-format text --print-timeout 180s \
-            --disable-slash-commands --mode plan --dangerously-skip-permissions --model "$1" 2>&1)
+            --disable-slash-commands --mode plan --dangerously-skip-permissions --model "$1" < /dev/null 2>&1)
     local code=$?
+    # A sign-in is per account, not per model: no other candidate would answer either.
+    if printf '%s' "$out" | grep -qiE "$SIGNIN_RE"; then echo signin; return 2; fi
     if [ $code = 0 ] && printf '%s\n' "$out" | grep -qiE '^[^[:alnum:]]*ok[^[:alnum:]]*$' && ! printf '%s' "$out" | grep -qiE "$LIMIT_RE"; then return 0; fi
     printf '%s' "$out" | grep -v '^[[:space:]]*$' | tail -2 | tr '\n' ' ' | cut -c1-200; return 1
   }
@@ -206,7 +226,9 @@ if has_arm mixed; then
   LEAD_MODEL=""; tried=""
   for c in $cands; do
     if [ -n "$list" ] && ! printf '%s\n' "$list" | tr -s ' \t,()' '\n' | grep -qxF -- "$c"; then tried="$tried; $c: not listed by agy"; say "   $c -> not listed by agy models"; continue; fi
-    if out=$(agy_ping "$c"); then LEAD_MODEL=$c; break; fi
+    out=$(agy_ping "$c"); rc=$?
+    [ $rc = 0 ] && { LEAD_MODEL=$c; break; }
+    [ $rc = 2 ] && die "Antigravity wants you to sign in again. Open a new Terminal window, run: agy   and sign in there. Then paste the same command again: it picks up where it stopped."
     tried="$tried; $c: $out"
     say "   $c -> no answer: $out"
   done
@@ -286,7 +308,7 @@ council_run() { # <arm> <task> <out> <work dir>
   # A local bare repo stands in for GitHub, so the council's push step works as it would on a real
   # project and never reaches the network. Without an origin the push fails and a finished run reads as BLOCKED.
   git init -q --bare "$w/origin.git" && (cd "$w/app" && git remote add origin "$w/origin.git" && git push -q origin main) >> "$out/cli.log" 2>&1 || return 1
-  export COUNCIL_HOME="$w/h" BENCH_CALLS_LOG="$out/calls.jsonl" BENCH_GH_LOG="$out/gh.log"
+  export COUNCIL_HOME="$w/h" BENCH_CALLS_LOG="$out/calls.jsonl" BENCH_GH_LOG="$out/gh.log" BENCH_STOP_FILE="$RES/STOP"
   local deadline=$(( $(date +%s) + COUNCIL_TIMEOUT ))
   left() { local l=$(( deadline - $(date +%s) )); [ $l -gt 30 ] && echo $l || echo 30; }
   sess=$(cd "$w/app" && with_timeout 300 node "$COUNCIL_JS" open "$task" --task-file "$BENCH/tasks/$task/task.md" $([ "$PROFILE" = quick ] && echo --quick) 2>> "$out/cli.log" | tail -1)
@@ -312,10 +334,22 @@ council_run() { # <arm> <task> <out> <work dir>
     echo "$ew" > "$out/tree"
     (cd "$ew" && git add -A >/dev/null 2>&1; git diff --cached "$(node -p "require('$sdir/meta.json').baseSha")" > "$out/diff.patch" 2>/dev/null)
   fi
-  unset COUNCIL_HOME BENCH_CALLS_LOG BENCH_GH_LOG
+  unset COUNCIL_HOME BENCH_CALLS_LOG BENCH_GH_LOG BENCH_STOP_FILE
   # A timeout that killed the council counts as an error, not a miss; a stall or a block is a result.
   [ "$code" = 142 ] && return 142
+  # So does a council that ended on an error (a seat that didn't answer, a crash): it never reached a result of its
+  # own, so its status is still OPEN (planning) or APPROVED / IN_EXECUTION (execution).
+  outcome_ok "$out" || { echo "the council ended on an error ($(tr '\n' ' ' < "$out/outcome")), not a result of its own" >> "$out/cli.log"; return 3; }
   return 0
+}
+
+# A council run's own result: it stalled in planning, or it was approved and execution ended DONE or BLOCKED.
+outcome_ok() {
+  local d e
+  d=$(sed -n 's/^deliberation: //p' "$1/outcome" 2>/dev/null); e=$(sed -n 's/^execution: //p' "$1/outcome" 2>/dev/null)
+  [ "$d" = STALLED ] && [ -z "$e" ] && return 0
+  [ "$d" = AWAITING_APPROVAL ] && { [ "$e" = DONE ] || [ "$e" = BLOCKED ]; } && return 0
+  return 1
 }
 
 done_run() { grep -qs '"status": "OK"' "$1/score.json" && { [ "$2" = single ] || grep -qs '"status": "OK"' "$1/flip.json"; }; }
@@ -342,6 +376,7 @@ run_job() { # <task> <arm> <n>
       local st=ERROR
       [ "$code" = 142 ] && st=TIMEOUT
       if [ "$arm" != single ] && grep -qs '"failures": *\[ *{' "$out/session/seats.json"; then st=SEAT-FAILURE; fi
+      [ "$code" = 3 ] && [ "$st" = ERROR ] && st=COUNCIL-ERROR
       local detail; detail=$(grep -v '^\s*$' "$out/cli.log" 2>/dev/null | tail -1 | cut -c1-160 | tr -d '"\\')
       printf '{"status":"%s","detail":"exit %s: %s"}\n' "$st" "$code" "$detail" > "$out/score.json"
       echo "$task $arm $n: $st (exit $code) after $(cat "$out/seconds")s"
@@ -373,6 +408,20 @@ run_job() { # <task> <arm> <n>
   [ -n "$jl" ] && echo "$jl" > "$RES/STOP"
   return 0
 }
+
+# ---------------------------------------------------------------- runs scored before this check existed
+# A council run that ended on an error, or met a usage limit or a sign-in prompt, was once scored as a miss.
+# Such runs are set aside (kept, renamed) and re-run. Listed in results/kept-check.txt.
+for d in "$RES"/*/mixed-* "$RES"/*/solo-*; do
+  case "$d" in *.setaside-*) continue;; esac
+  [ -d "$d" ] && grep -qs '"status": "OK"' "$d/score.json" || continue
+  why=""
+  outcome_ok "$d" || why="the council ended on an error ($(tr '\n' ' ' < "$d/outcome" 2>/dev/null))"
+  [ -z "$why" ] && why=$(node "$BENCH/lib/limits.cjs" "$d" run)
+  [ -n "$why" ] || continue
+  aside="$d.setaside-$(date +%Y%m%d%H%M%S)"
+  mv "$d" "$aside" && echo "$(date '+%Y-%m-%d %H:%M %Z'): ${d#$RES/} set aside and re-run: $why (kept as ${aside#$RES/})" | tee -a "$RES/kept-check.txt"
+done
 
 # ---------------------------------------------------------------- the schedule
 # Run 1 of every task and arm comes before any run 2, so a stop part-way still leaves a balanced set.
