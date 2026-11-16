@@ -5,6 +5,10 @@ versions follow [SemVer](https://semver.org/). Get notified of new versions with
 
 ## [Unreleased]
 
+### Fixed
+- A Gemini seat on Antigravity that is meant to be read-only could write files (#46). agy ignores `--mode plan` when slash commands are off, and plan seats also skipped agy's permission prompts. Read-only seats now run through `agy acp`, the Agent Client Protocol mode of agy 1.5.5 and later. The seat runs in agy's plan mode, and every write agy asks for is refused. On a real agy, the old path wrote a file it was asked to write, and the new one did not. A plan seat can still read, search and run plain read-only commands such as `find`, `grep`, `rg` and `git log`. Anything else is refused. An agy without `agy acp` gets a clear error rather than the old path.
+- When agy's usage quota is used up, it answers with its own notice. That notice is now a usage-limit failure, which moves the seat when failover is on, not a seat's answer.
+
 ## [0.4.0] — 2026-11-10
 
 A first review on any setup: it checks which AIs are ready, runs with those, and finishes even when a seat fails.
