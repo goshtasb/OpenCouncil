@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const [dir, mode] = process.argv.slice(2);
 const LIMIT = /usage limit|limit reached|hit your (usage |weekly |session |daily )?limit|weekly limit|rate.?limit|quota|resource.?exhausted|too many requests|credit balance|out of credits|exceeded your|try again (later|in)|\b429\b/i;
-const SIGNIN = /accounts\.google\.com|paste (this|the) code|authorization code|(sign|log) ?in (again|required|to continue)|not (signed|logged) in|re-?authenticat/i;
+const SIGNIN = /accounts\.google\.com|paste (this|the) code|authorization code|to complete authentication|(sign|log) ?in (again|required|to continue)|not (signed|logged) in|re-?authenticat/i;
 const read = f => { try { return fs.readFileSync(path.join(dir, f), 'utf8'); } catch { return ''; } };
 const hits = new Map();
 const hit = (vendor, s) => { if (!hits.has(vendor)) hits.set(vendor, s.replace(/\s+/g, ' ').trim().slice(0, 160)); };
@@ -22,6 +22,8 @@ for (const f of jsonl) for (const line of read(f).split('\n')) {
 const stderr = mode === 'judge' ? { claude: ['flip.err'] }
   : mode === 'single' ? { claude: ['cli.log'] }
   : { claude: ['claude-stderr.log'], gemini: ['agy-stderr.log'], grok: ['grok-stderr.log'] };
+// A sign-in prompt on Antigravity's stdout is judged by the agy wrapper, per call, which then writes
+// "Antigravity is not signed in: ..." to agy-stderr.log; the answers themselves are never read here.
 let signin = false;
 for (const [vendor, files] of Object.entries(stderr)) for (const f of files) {
   const t = read(f);

@@ -164,3 +164,111 @@ test('summarize: a Lead PM swap is listed and each model is compared on its own 
   assert.match(md, /\*\*Lead PM gemini-3\.8-flash-high\*\*: mixed 1\/1 passed vs single 0\/1 on the same 1 task\b/);
   assert.match(md, /late-fees mixed 1: PASS\*\* \(1\.0 min, Lead PM gemini-3\.8-flash-high\)/);
 });
+
+// ------------------------------------------------------------------ Antigravity sign-in prompts
+test('an Antigravity sign-in prompt stops the batch at once, and later Lead PM calls are skipped, not sent', { skip: canRun }, () => {
+  const dir = tmp('fl-signin-');
+  const bin = stubs(dir);
+  const r = run(dir, bin, { PREFLIGHT_ONLY: '1' });
+  assert.equal(r.code, 0, r.out);
+  // The real agy now wants a sign-in: it prints Google's page on stdout and waits for a code on stdin.
+  const count = path.join(dir, 'agy-calls');
+  fs.writeFileSync(path.join(bin, 'agy'), `#!/bin/bash\necho x >> "${count}"\necho "Open https://accounts.google.com/o/oauth2/auth?client_id=1 and paste the code here:"\nread -r code || exit 1\n`);
+  const out = path.join(dir, 'root', 'results', 'late-fees', 'mixed-1');
+  fs.mkdirSync(out, { recursive: true });
+  const stop = path.join(dir, 'root', 'results', 'STOP');
+  const env = { ...process.env, BENCH_CALLS_LOG: path.join(out, 'calls.jsonl'), BENCH_STOP_FILE: stop };
+  const shim = path.join(dir, 'root', 'bin', 'agy');
+  const t0 = Date.now();
+  const a = spawnSync(shim, ['-p', 'draft the plan', '--model', 'gemini-3.8-flash-high'], { env, encoding: 'utf8', timeout: 30000 });
+  assert.ok(Date.now() - t0 < 10000, 'agy gets no stdin, so it cannot sit waiting for a code');
+  assert.equal(a.status, 1);
+  assert.match(a.stdout, /accounts\.google\.com/, 'the council still sees what agy printed');
+  assert.equal(fs.readFileSync(stop, 'utf8'), 'signin\n');
+  const b = spawnSync(shim, ['-p', 'round 2', '--model', 'gemini-3.8-flash-high'], { env, encoding: 'utf8' });
+  assert.equal(b.status, 1);
+  assert.match(b.stderr, /not signed in: call skipped/);
+  assert.equal(fs.readFileSync(count, 'utf8'), 'x\n', 'the second call never reached agy, so no second sign-in page');
+  // The run's own check after it ends sees the wrapper's line, not the model text.
+  assert.equal(limits({ 'agy-stderr.log': fs.readFileSync(path.join(out, 'agy-stderr.log'), 'utf8') }, 'run'), 'signin');
+});
+
+test('a Lead PM answer that talks about signing in does not stop the batch', { skip: canRun }, () => {
+  const dir = tmp('fl-signin-');
+  const bin = stubs(dir);
+  assert.equal(run(dir, bin, { PREFLIGHT_ONLY: '1' }).code, 0);
+  const answer = 'Users must sign in again after 30 days; see accounts.google.com/o/oauth2 for SSO. Login required to redeem.';
+  fs.writeFileSync(path.join(bin, 'agy'), `#!/bin/bash\necho "${answer}"\n`);
+  const out = path.join(dir, 'root', 'results', 'coupon-redeem', 'mixed-1');
+  fs.mkdirSync(out, { recursive: true });
+  const stop = path.join(dir, 'root', 'results', 'STOP');
+  const env = { ...process.env, BENCH_CALLS_LOG: path.join(out, 'calls.jsonl'), BENCH_STOP_FILE: stop };
+  const shim = path.join(dir, 'root', 'bin', 'agy');
+  for (const round of [1, 2]) {
+    const a = spawnSync(shim, ['-p', `round ${round}`, '--model', 'gemini-3.8-flash-high'], { env, encoding: 'utf8' });
+    assert.equal(a.status, 0);
+    assert.match(a.stdout, /sign in again/);
+  }
+  assert.equal(fs.existsSync(stop), false, 'no stop');
+  assert.equal(limits({ 'agy-stdout.log': fs.readFileSync(path.join(out, 'agy-stdout.log'), 'utf8') }, 'run'), '', 'and the log of answers is never read as a sign-in');
+});
+
+test('preflight: a sign-in prompt stops it with what to do, without trying the other Lead PM models', { skip: canRun }, () => {
+  const dir = tmp('fl-pre-');
+  const bin = stubs(dir);
+  const count = path.join(dir, 'agy-calls');
+  fs.writeFileSync(path.join(bin, 'agy'), `#!/bin/bash\n[ "$1" = --version ] && { echo "agy 0"; exit 0; }\n[ "$1" = models ] && { printf 'gemini-4-argon-high\\ngemini-3.8-flash-high\\n'; exit 0; }\necho x >> "${count}"\necho "Please sign in again: https://accounts.google.com/o/oauth2/auth" >&2\nexit 1\n`);
+  const r = run(dir, bin, { PREFLIGHT_ONLY: '1', LEAD_CANDIDATES: 'gemini-4-argon-high gemini-3.8-flash-high auto' });
+  assert.notEqual(r.code, 0);
+  assert.match(r.out, /Antigravity wants you to sign in again\. Open a new Terminal window, run: agy/);
+  assert.equal(fs.readFileSync(count, 'utf8'), 'x\n');
+});
+
+test('limits: model text that only mentions sign-in pages is not a sign-in prompt', () => {
+  assert.equal(limits({ 'agy-stdout.log': 'Users who are not signed in see the public price; link to accounts.google.com/o/oauth for SSO.\n' }, 'run'), '');
+});
+
+test('a council that ends on an error is COUNCIL-ERROR, not scored as a miss', { skip: canRun }, () => {
+  const dir = tmp('fl-err-');
+  const bin = stubs(dir);
+  // A council whose Lead PM seat fails: deliberate exits 1 and the session is left OPEN.
+  fs.writeFileSync(path.join(dir, 'root', 'tool', 'node_modules', 'open-council-cli', 'bin', 'council.js'), `
+const fs = require('fs'), path = require('path');
+const [cmd] = process.argv.slice(2);
+const s = path.join(process.env.COUNCIL_HOME, 'projects', 'p', 'sessions', 's1');
+if (cmd === 'init') fs.mkdirSync('.council', { recursive: true });
+else if (cmd === 'open') { fs.mkdirSync(s, { recursive: true }); fs.writeFileSync(path.join(s, 'STATUS.json'), JSON.stringify({ status: 'OPEN', details: {} })); console.log('s1'); }
+else if (cmd === 'deliberate') { console.error('Lead PM seat failed: agy exited 1'); process.exit(1); }
+`);
+  const r = run(dir, bin, { ARMS: 'mixed', TASKS: 'late-fees', RUNS_COUNCIL: '1' });
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /late-fees mixed 1: COUNCIL-ERROR \(exit 3\)/);
+  assert.match(r.read('results/late-fees/mixed-1/score.json'), /"status":"COUNCIL-ERROR","detail":"exit 3: the council ended on an error \(deliberation: OPEN \)/);
+  assert.match(r.read('summary.md'), /0 scored runs, 1 not scored \(1 COUNCIL-ERROR\)/);
+});
+
+test('a council run once scored as a miss after it ended on an error or a sign-in is set aside and re-run', { skip: canRun }, () => {
+  const dir = tmp('fl-recheck-');
+  const bin = stubs(dir);
+  const res = path.join(dir, 'root', 'results');
+  const put = (rel, outcome, extra = {}) => {
+    const d = path.join(res, rel); fs.mkdirSync(d, { recursive: true });
+    fs.writeFileSync(path.join(d, 'score.json'), JSON.stringify({ status: 'OK', passed: false }, null, 2));
+    fs.writeFileSync(path.join(d, 'flip.json'), JSON.stringify({ status: 'OK' }, null, 2));
+    fs.writeFileSync(path.join(d, 'outcome'), outcome);
+    for (const [f, b] of Object.entries(extra)) fs.writeFileSync(path.join(d, f), b);
+  };
+  put('late-fees/mixed-1', 'deliberation: STALLED\n');                                   // a real stall: kept
+  put('late-fees/mixed-2', 'deliberation: AWAITING_APPROVAL\nexecution: BLOCKED\n');      // a real block: kept
+  put('daily-usage/mixed-1', 'deliberation: OPEN\n');                                     // a seat error: set aside
+  put('daily-usage/mixed-2', 'deliberation: STALLED\n', { 'agy-stderr.log': 'Paste this code into your application to complete authentication:\n' });
+  const r = run(dir, bin, { ARMS: 'mixed', TASKS: 'late-fees', RUNS_COUNCIL: '2' });
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /0 runs to do/);
+  const check = r.read('results/kept-check.txt');
+  assert.match(check, /daily-usage\/mixed-1 set aside and re-run: the council ended on an error \(deliberation: OPEN \)/);
+  assert.match(check, /daily-usage\/mixed-2 set aside and re-run: signin/);
+  assert.doesNotMatch(check, /late-fees/);
+  assert.ok(fs.readdirSync(path.join(res, 'daily-usage')).every(n => /\.setaside-/.test(n)));
+  assert.ok(fs.existsSync(path.join(res, 'late-fees', 'mixed-1', 'score.json')));
+});

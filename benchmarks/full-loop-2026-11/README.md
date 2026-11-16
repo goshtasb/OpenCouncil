@@ -99,4 +99,7 @@ It checks every CLI is signed in and answers, installs `open-council-cli@0.4.0` 
 
 ## Changes after pre-registration
 
-None yet.
+**2026-11-16, harness fixes only (no change to tasks, arms, prompts, pass rule or analysis).** On the first batch the owner's Antigravity sign-in expired and every mixed run kept opening a Google sign-in page.
+- The Antigravity wrapper gives `agy` an empty stdin, so it can't sit waiting for a code, and, for a call that failed or was killed, reads that call's own error output and answer (the answer with a strict pattern) for a sign-in prompt. A Lead PM answer that only talks about signing in never stops the batch. The first prompt stops the batch at once; every later Lead PM call in the runs still going is skipped instead of sent, so no further sign-in page opens. The preflight stops on a sign-in prompt too, with what to do, instead of trying the other Lead PM models.
+- A council that ended on an error, a seat that didn't answer included, was scored as a miss on its untouched repo, because with seat failover off such an error leaves the session `OPEN` rather than `STALLED`. Only a council's own result is scored now: a stall in planning, or execution that ended `DONE` or `BLOCKED`. Anything else is not scored and is re-run, as the pass rule already said.
+- Council runs scored before this fix that ended on an error, or met a usage limit or a sign-in prompt, are set aside (kept, renamed `*.setaside-*`) and re-run; each is listed in `results/kept-check.txt`.
