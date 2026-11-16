@@ -165,6 +165,7 @@ export function registerProjectCommands(program: Command, ctx: CliContext): void
     .action(action((title: string, options: { priority: string; kind: string; body?: string }) => {
       const priority = parseInt(options.priority, 10);
       if (!Number.isInteger(priority) || priority < 1 || priority > 9) throw new Error('Priority must be an integer from 1 to 9.');
+      if (!['feature', 'bug', 'refactor'].includes(options.kind)) throw new Error('Kind must be one of: feature, bug, refactor.');
       const item = new PipelineManager().addItem(title, priority, options.body || '', options.kind);
       logger.success(`Added item ${item.id}: "${item.title}" [Priority ${item.priority}]`);
     }));

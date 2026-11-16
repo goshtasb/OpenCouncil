@@ -48,6 +48,18 @@ test('CLI backlog add/list round-trip', () => {
   assert.equal(run(repo, 'backlog', 'add', 'Bad', '-p', '12').status, 1);
 });
 
+test('backlog add rejects an unknown --kind and adds nothing', () => {
+  const repo = makeRepo();
+  assert.equal(run(repo, 'backlog', 'add', 'Good', '-k', 'bug').status, 0);
+  assert.equal(run(repo, 'backlog', 'add', 'Defaulted').status, 0);
+  const bad = run(repo, 'backlog', 'add', 'Bad', '-k', 'bgu');
+  assert.equal(bad.status, 1);
+  assert.match(bad.stderr, /Kind must be one of: feature, bug, refactor/);
+  const list = run(repo, 'backlog', 'list').stdout;
+  assert.match(list, /Good/);
+  assert.doesNotMatch(list, /Bad/);
+});
+
 test('backlog list --json prints the items as a JSON array, and [] when empty', () => {
   const repo = makeRepo();
   const empty = run(repo, 'backlog', 'list', '--json');
