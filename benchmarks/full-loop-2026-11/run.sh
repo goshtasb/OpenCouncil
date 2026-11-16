@@ -46,8 +46,8 @@ if ! mkdir "$LOCK" 2>/dev/null; then
 fi
 echo $$ > "$LOCK/pid"
 trap 'rm -rf "$LOCK"' EXIT
-# Antigravity asking to sign in again. Its error output is read with the broad pattern; its answers (which are
-# model text) only with the strict one, which names Google's sign-in page or the CLI's own sign-in wording.
+# Antigravity asking to sign in again. Its error output is read with the broad pattern; its answer text only with
+# the strict one, which names Google's sign-in page or the CLI's own sign-in wording, and only for a call that failed.
 SIGNIN_RE='accounts\.google\.com|paste (this|the) code|authorization code|to complete authentication|(sign|log) ?in (again|required|to continue)|not (signed|logged) in|re-?authenticat'
 SIGNIN_STRICT_RE='accounts\.google\.com/o/oauth|paste (this|the) code|to complete authentication|(sign|log) ?in (again|required|to continue)|not (signed|logged) in to antigravity'
 LIMIT_RE='usage limit|limit reached|hit your (usage |weekly |session |daily )?limit|weekly limit|rate.?limit|quota|resource.?exhausted|too many requests|credit balance|out of credits|exceeded your|try again (later|in)'
@@ -130,16 +130,24 @@ fi
 # stdout and stderr are passed on unchanged and also written, as they arrive, next to the run's call log, where
 # run.sh looks for a usage limit or a sign-in prompt. stdin is empty, so agy can't sit waiting for a code typed in.
 # agy runs in the background so that when the council's seat timeout kills this shim, the trap stops agy too.
-signin_check() {
-  if grep -qiE '$SIGNIN_RE' "\$D/agy-stderr.log" 2>/dev/null || grep -qiE '$SIGNIN_STRICT_RE' "\$D/agy-stdout.log" 2>/dev/null; then
+# A sign-in prompt is looked for only in a call that did not answer (it failed or was killed), and only in that
+# call's own output: a Lead PM answer that merely talks about signing in never stops the batch. Its error output
+# is read with the broad pattern, its answer text only with the strict one.
+co=\$(mktemp); ce=\$(mktemp)
+signin_check() { # <exit code>
+  [ "\$1" = 0 ] && return 0
+  sleep 0.3 # let tee finish writing this call's output
+  if grep -qiE '$SIGNIN_RE' "\$ce" 2>/dev/null || grep -qiE '$SIGNIN_STRICT_RE' "\$co" 2>/dev/null; then
+    echo "Antigravity is not signed in: this call stopped at a sign-in prompt." >> "\$D/agy-stderr.log"
     [ -n "\${BENCH_STOP_FILE:-}" ] && echo signin > "\$BENCH_STOP_FILE"
   fi
 }
 t0=\$(date +%s)
-"\$REAL" "\$@" < /dev/null > >(tee -a "\$D/agy-stdout.log") 2> >(tee -a "\$D/agy-stderr.log" >&2) & pid=\$!
-trap 'kill \$pid 2>/dev/null; wait \$pid 2>/dev/null; signin_check; exit 143' TERM INT HUP
+"\$REAL" "\$@" < /dev/null > >(tee -a "\$D/agy-stdout.log" "\$co") 2> >(tee -a "\$D/agy-stderr.log" "\$ce" >&2) & pid=\$!
+trap 'kill \$pid 2>/dev/null; wait \$pid 2>/dev/null; signin_check 143; rm -f "\$co" "\$ce"; exit 143' TERM INT HUP
 wait \$pid; code=\$?
-signin_check
+signin_check \$code
+rm -f "\$co" "\$ce"
 printf '{"vendor":"gemini","model":"%s","seconds":%s,"code":%s}\n' "\$model" "\$(( \$(date +%s) - t0 ))" "\$code" >> "\$BENCH_CALLS_LOG"
 exit \$code
 SHIM

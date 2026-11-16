@@ -22,12 +22,12 @@ for (const f of jsonl) for (const line of read(f).split('\n')) {
 const stderr = mode === 'judge' ? { claude: ['flip.err'] }
   : mode === 'single' ? { claude: ['cli.log'] }
   : { claude: ['claude-stderr.log'], gemini: ['agy-stderr.log'], grok: ['grok-stderr.log'] };
-// Antigravity's answers are model text: only Google's sign-in page or the CLI's own sign-in wording counts there.
-const SIGNIN_STRICT = /accounts\.google\.com\/o\/oauth|paste (this|the) code|to complete authentication|(sign|log) ?in (again|required|to continue)|not (signed|logged) in to antigravity/i;
-let signin = mode !== 'judge' && mode !== 'single' && SIGNIN_STRICT.test(read('agy-stdout.log'));
+// A sign-in prompt on Antigravity's stdout is judged by the agy wrapper, per call, which then writes
+// "Antigravity is not signed in: ..." to agy-stderr.log; the answers themselves are never read here.
+let signin = false;
 for (const [vendor, files] of Object.entries(stderr)) for (const f of files) {
   const t = read(f);
-  if (vendor === 'gemini' && (SIGNIN.test(t) || /not signed in: call skipped/i.test(t))) signin = true;
+  if (vendor === 'gemini' && SIGNIN.test(t)) signin = true;
   const m = t.split('\n').find(l => LIMIT.test(l));
   if (m) hit(vendor, m);
 }
