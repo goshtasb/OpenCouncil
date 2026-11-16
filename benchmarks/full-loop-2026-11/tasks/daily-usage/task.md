@@ -1,0 +1,1 @@
+Customers want a chart of their daily usage on the dashboard. Add `dailyUsage(store, accountId, days, now)` to `src/usage.js`. It should return one entry per day for the last `days` days, oldest first, so the chart can plot it directly.

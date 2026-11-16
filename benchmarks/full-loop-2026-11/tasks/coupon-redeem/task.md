@@ -1,0 +1,1 @@
+Checkout needs to actually use coupons up, not just preview them. Add `redeemCoupon(kv, code, userId, now)` to `src/coupons.js`. It's called when the order is placed, and it should respect the coupon's usage limits.
