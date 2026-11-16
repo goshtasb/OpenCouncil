@@ -26,7 +26,9 @@ for (const task of fs.existsSync(res) ? fs.readdirSync(res).sort() : []) {
       seconds: +text(path.join(dir, 'seconds'), '0') || null, tests, outcome,
       flip: read(path.join(dir, 'flip.json'), null),
       cost: calls.reduce((s, c) => s + (typeof c.cost_usd === 'number' ? c.cost_usd : 0), 0),
-      gemini: calls.filter(c => c.vendor === 'gemini').length, grok: calls.filter(c => c.vendor === 'grok').length
+      gemini: calls.filter(c => c.vendor === 'gemini').length, grok: calls.filter(c => c.vendor === 'grok').length,
+      // The Lead PM model this run actually called, else the one it was set up with.
+      lead: m[1] === 'mixed' ? ((calls.find(c => c.vendor === 'gemini' && c.model) || {}).model || text(path.join(dir, 'lead-model')) || null) : null
     });
   }
 }
@@ -35,12 +37,30 @@ const tasks = [...new Set(runs.map(r => r.task))];
 const scored = runs.filter(r => r.status === 'OK');
 const L = [];
 L.push('# Full loop: council vs one agent, results', '', '```', text(path.join(res, 'meta.txt')), '```', '');
-L.push(`${scored.length} scored runs, ${runs.length - scored.length} not scored (errors, timeouts, usage limits or seat failures; those are re-run, never counted as misses).`, '');
+const devs = text(path.join(res, 'deviations.txt')).split('\n').filter(Boolean);
+if (devs.length) L.push('## Deviations from the pre-registration', '', ...devs.map(d => `- ${d}`), '');
+const unscored = {};
+for (const r of runs) if (r.status !== 'OK') unscored[r.status] = (unscored[r.status] || 0) + 1;
+const why = Object.entries(unscored).map(([k, v]) => `${v} ${k}`).join(', ');
+L.push(`${scored.length} scored runs, ${runs.length - scored.length} not scored${why ? ` (${why})` : ''}. Runs stopped by an error, a timeout, a usage limit, a sign-in prompt or a seat failure are re-run, never counted as misses.`, '');
 
 L.push('## Passed every hidden test (primary metric)', '', `| Task | ${arms.join(' | ')} |`, `| --- |${arms.map(() => ' --- |').join('')}`);
 const cell = rs => (rs.length ? `${rs.filter(r => r.passed).length}/${rs.length}` : '-');
 for (const t of tasks) L.push(`| ${t} | ${arms.map(a => cell(scored.filter(r => r.task === t && r.arm === a))).join(' | ')} |`);
 L.push(`| **All tasks** | ${arms.map(a => `**${cell(scored.filter(r => r.arm === a))}**`).join(' | ')} |`, '');
+
+const leads = [...new Set(scored.filter(r => r.arm === 'mixed' && r.lead).map(r => r.lead))];
+const prereg = (/^pre-registered lead \(mixed\): (\S+)/m.exec(text(path.join(res, 'meta.txt'))) || [])[1];
+if (leads.some(l => l !== prereg)) {
+  L.push('## Mixed arm by Lead PM model', '', 'The Lead PM model was not the pre-registered one for some or all mixed runs (see Deviations). Each line sets that model\'s mixed runs against the single agent\'s runs on the same tasks only.', '');
+  for (const lm of [...leads].sort((a, b) => (b === prereg) - (a === prereg))) {
+    const mr = scored.filter(r => r.arm === 'mixed' && r.lead === lm);
+    const ts = new Set(mr.map(r => r.task));
+    const sr = scored.filter(r => r.arm === 'single' && ts.has(r.task));
+    L.push(`- **Lead PM ${lm}${lm === prereg ? ' (pre-registered)' : ''}**: mixed ${cell(mr)} passed vs single ${cell(sr)} on the same ${ts.size} task${ts.size === 1 ? '' : 's'}`);
+  }
+  L.push('');
+}
 
 L.push('## Each hidden test (secondary: share of runs that passed it)', '');
 for (const t of tasks) {
@@ -94,7 +114,7 @@ L.push('## Every run', '');
 for (const r of runs) {
   const failed = r.tests ? r.tests.hiddenTests.filter(x => !x.ok).map(x => x.name.replace(/^hidden: /, '')) : [];
   const what = r.status !== 'OK' ? `NOT SCORED (${r.status}: ${r.detail})` : r.passed ? 'PASS' : `FAIL: ${failed.join('; ') || (r.tests && !r.tests.visiblePassed ? 'original tests failing' : '?')}`;
-  L.push(`- **${r.task} ${r.arm} ${r.n}: ${what}** (${mins(r.seconds)}${r.outcome.length ? ', ' + r.outcome.join(', ') : ''})`);
+  L.push(`- **${r.task} ${r.arm} ${r.n}: ${what}** (${mins(r.seconds)}${r.lead ? `, Lead PM ${r.lead}` : ''}${r.outcome.length ? ', ' + r.outcome.join(', ') : ''})`);
   if (r.flip && r.flip.items) for (const i of r.flip.items) {
     if (i.named) L.push(`  > late sign-off (${i.stage}) named "${i.test.replace(/^hidden: /, '')}": ${i.quote}`);
     if (i.inPlan) L.push(`  > final plan named "${i.test.replace(/^hidden: /, '')}": ${i.planQuote}`);

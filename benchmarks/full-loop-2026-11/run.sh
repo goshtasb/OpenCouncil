@@ -8,6 +8,9 @@
 #   ARMS="mixed single solo" bash run.sh   also run the all-Claude council (secondary arm)
 #   PROFILE=quick bash run.sh          the 4-round quick profile instead of the default full one (not the pre-registered run)
 #   GROK_MODEL=grok-4.7 bash run.sh    pin the Grok model (default: the newest plain grok-N.N that `grok models` lists)
+#   LEAD_CANDIDATES="gemini-4-argon-high gemini-3.8-flash-high auto" bash run.sh
+#                                      Lead PM models to try in order when the pre-registered one has no quota
+#                                      ("auto" adds every other Gemini model agy lists); a swap is logged as a deviation
 #
 # Runs on the CLIs' own sign-ins (Claude Code, Antigravity, Grok). API keys in the environment are
 # ignored for this run so nothing is billed to a key. Nothing is pushed or posted: each task is a small
@@ -18,7 +21,9 @@ BENCH=$(cd "$(dirname "$0")" && pwd)
 ROOT=${BENCH_ROOT:-$HOME/oc-full-loop}
 RES=$ROOT/results
 CLI_VERSION=0.4.0
-LEAD_MODEL=gemini-4-argon-high
+PREREG_LEAD_MODEL=gemini-4-argon-high
+LEAD_CANDIDATES=${LEAD_CANDIDATES:-$PREREG_LEAD_MODEL}
+LEAD_MODEL=$PREREG_LEAD_MODEL
 ENGINEER_MODEL=opus
 SOLO_SIDE_MODEL=sonnet
 ARMS=${ARMS:-"mixed single"}
@@ -32,6 +37,16 @@ JUDGE_TIMEOUT=${JUDGE_TIMEOUT:-600}
 PROFILE=${PROFILE:-full}                # council profile: full (the default `council init`, 10 rounds) or quick (4 rounds)
 TASKS=${TASKS:-"charge-retries late-fees event-pagination daily-usage coupon-redeem"}
 mkdir -p "$ROOT/bin" "$ROOT/tool" "$RES"
+# One batch at a time: two copies would build, score and stop the same runs.
+LOCK=$ROOT/.running
+if ! mkdir "$LOCK" 2>/dev/null; then
+  p=$(cat "$LOCK/pid" 2>/dev/null)
+  if [ -n "$p" ] && kill -0 "$p" 2>/dev/null; then echo "The full-loop benchmark is already running in another window. Let that one finish, or stop it with Ctrl-C there first."; exit 1; fi
+  rm -rf "$LOCK"; mkdir "$LOCK" || { echo "Could not take the lock $LOCK."; exit 1; }
+fi
+echo $$ > "$LOCK/pid"
+trap 'rm -rf "$LOCK"' EXIT
+LIMIT_RE='usage limit|limit reached|hit your (usage |weekly |session |daily )?limit|weekly limit|rate.?limit|quota|resource.?exhausted|too many requests|credit balance|out of credits|exceeded your|try again (later|in)'
 
 say() { printf '%s\n' "$*" | tee -a "$RES/preflight.txt"; }
 die() { say "STOP: $*"; exit 1; }
@@ -88,7 +103,8 @@ for a in "\$@"; do
 done
 if [ \$is_p = 0 ] || [ \$has_fmt = 1 ] || [ -z "\${BENCH_CALLS_LOG:-}" ]; then exec "\$REAL" "\$@"; fi
 t0=\$(date +%s); tmp=\$(mktemp)
-"\$REAL" "\$@" --output-format json > "\$tmp"; code=\$?
+# stderr is passed on unchanged and also kept, so a usage-limit message is seen even when Claude prints no JSON.
+"\$REAL" "\$@" --output-format json > "\$tmp" 2> >(tee -a "\$(dirname "\$BENCH_CALLS_LOG")/claude-stderr.log" >&2); code=\$?
 node "$BENCH/lib/claude-json.cjs" "\$tmp" "\$BENCH_CALLS_LOG" "\$model" "\$(( \$(date +%s) - t0 ))" "\$code"
 rm -f "\$tmp"; exit \$code
 SHIM
@@ -99,7 +115,13 @@ case " \$* " in *" -p "*) ;; *) exec "\$REAL" "\$@";; esac
 [ -n "\${BENCH_CALLS_LOG:-}" ] || exec "\$REAL" "\$@"
 model=""; prev=""
 for a in "\$@"; do [ "\$prev" = --model ] && model=\$a; prev=\$a; done
-t0=\$(date +%s); "\$REAL" "\$@"; code=\$?
+# stderr is passed on unchanged and also written, as it arrives, next to the run's call log, where run.sh looks
+# for a usage limit or a sign-in prompt. agy runs in the background so that when the council's seat timeout
+# kills this shim, the trap stops agy too instead of leaving it waiting for a sign-in.
+t0=\$(date +%s)
+"\$REAL" "\$@" <&0 2> >(tee -a "\$(dirname "\$BENCH_CALLS_LOG")/agy-stderr.log" >&2) & pid=\$!
+trap 'kill \$pid 2>/dev/null; wait \$pid 2>/dev/null; exit 143' TERM INT HUP
+wait \$pid; code=\$?
 printf '{"vendor":"gemini","model":"%s","seconds":%s,"code":%s}\n' "\$model" "\$(( \$(date +%s) - t0 ))" "\$code" >> "\$BENCH_CALLS_LOG"
 exit \$code
 SHIM
@@ -111,7 +133,7 @@ case " \$* " in *" --prompt-file "*|*" -p "*) ;; *) exec "\$REAL" "\$@";; esac
 [ -n "\${BENCH_CALLS_LOG:-}" ] || exec "\$REAL" "\$@"
 model=""; prev=""
 for a in "\$@"; do { [ "\$prev" = -m ] || [ "\$prev" = --model ]; } && model=\$a; prev=\$a; done
-t0=\$(date +%s); "\$REAL" "\$@"; code=\$?
+t0=\$(date +%s); "\$REAL" "\$@" 2> >(tee -a "\$(dirname "\$BENCH_CALLS_LOG")/grok-stderr.log" >&2); code=\$?
 printf '{"vendor":"grok","model":"%s","seconds":%s,"code":%s}\n' "\$model" "\$(( \$(date +%s) - t0 ))" "\$code" >> "\$BENCH_CALLS_LOG"
 exit \$code
 SHIM
@@ -146,26 +168,62 @@ claude_ping() { # <alias>
   echo "$out" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const j=JSON.parse(s);if(j.is_error)throw new Error(j.result);console.log(Object.keys(j.modelUsage||{}).join(", ")+" (answered: "+String(j.result).trim().slice(0,20)+")")}catch(e){console.log("FAIL "+e.message.slice(0,200));process.exit(1)}})'
 }
 say "-- Claude Code: $("$REAL_CLAUDE" --version 2>&1 | head -1)"
-m=$(claude_ping "$ENGINEER_MODEL") || die "Claude Code did not answer on '$ENGINEER_MODEL': $m. Run 'claude' once and sign in with your plan, then rerun."
+claude_down() { # <alias> <reason>
+  if printf '%s' "$2" | grep -qiE "$LIMIT_RE"; then
+    die "Your Claude plan's usage limit is reached ($2). Nothing has run. Paste the same command again after it resets: it picks up where it stopped."
+  fi
+  die "Claude Code did not answer on '$1': $2. Run 'claude' once and sign in with your plan, then rerun."
+}
+m=$(claude_ping "$ENGINEER_MODEL") || claude_down "$ENGINEER_MODEL" "$m"
 say "   $ENGINEER_MODEL -> $m"
 if has_arm solo; then
-  m=$(claude_ping "$SOLO_SIDE_MODEL") || die "Claude Code did not answer on '$SOLO_SIDE_MODEL': $m"
+  m=$(claude_ping "$SOLO_SIDE_MODEL") || claude_down "$SOLO_SIDE_MODEL" "$m"
   say "   $SOLO_SIDE_MODEL -> $m"
 fi
 
 if has_arm mixed; then
   say "-- Antigravity (Gemini): $("$REAL_AGY" --version 2>&1 | head -1)"
   list=$("$REAL_AGY" models 2>/dev/null)
-  if [ -n "$list" ] && ! printf '%s\n' "$list" | grep -q "$LEAD_MODEL"; then
-    die "Antigravity does not list $LEAD_MODEL. It lists: $(printf '%s' "$list" | tr '\n' ' ' | cut -c1-300)"
+  agy_ping() { # <model>  Same shape as the Lead PM's call: plan mode, slash commands off. Prints the reason on failure.
+    local out; out=$(cd "$ROOT" && with_timeout 240 "$REAL_AGY" -p "Reply with the single word ok." --output-format text --print-timeout 180s \
+            --disable-slash-commands --mode plan --dangerously-skip-permissions --model "$1" 2>&1)
+    local code=$?
+    if [ $code = 0 ] && printf '%s\n' "$out" | grep -qiE '^[^[:alnum:]]*ok[^[:alnum:]]*$' && ! printf '%s' "$out" | grep -qiE "$LIMIT_RE"; then return 0; fi
+    printf '%s' "$out" | grep -v '^[[:space:]]*$' | tail -2 | tr '\n' ' ' | cut -c1-200; return 1
+  }
+  cands=""
+  for c in $LEAD_CANDIDATES; do
+    if [ "$c" = auto ]; then
+      # Every other Gemini model agy lists, in its order; never a retired id the CLI would silently remap.
+      for m in $(printf '%s\n' "$list" | tr -s ' \t,()' '\n' | grep -E '^gemini-[0-9][0-9a-z.-]*$' | awk '!seen[$0]++'); do
+        [ "$m" = gemini-3.1-pro-high ] && continue
+        case " $cands " in *" $m "*) ;; *) cands="$cands $m";; esac
+      done
+    else
+      case " $cands " in *" $c "*) ;; *) cands="$cands $c";; esac
+    fi
+  done
+  LEAD_MODEL=""; tried=""
+  for c in $cands; do
+    if [ -n "$list" ] && ! printf '%s\n' "$list" | tr -s ' \t,()' '\n' | grep -qxF -- "$c"; then tried="$tried; $c: not listed by agy"; say "   $c -> not listed by agy models"; continue; fi
+    if out=$(agy_ping "$c"); then LEAD_MODEL=$c; break; fi
+    tried="$tried; $c: $out"
+    say "   $c -> no answer: $out"
+  done
+  [ -n "$LEAD_MODEL" ] || die "No Lead PM model answered${tried}. Open agy once and sign in, or wait for a quota to reset, then rerun."
+  say "   Lead PM $LEAD_MODEL in plan mode -> answered"
+  if [ "$LEAD_MODEL" != "$PREREG_LEAD_MODEL" ]; then
+    say "   DEVIATION: the pre-registered Lead PM $PREREG_LEAD_MODEL did not answer, so new mixed runs use $LEAD_MODEL."
+    dev="$(date '+%Y-%m-%d %H:%M %Z'): Lead PM (mixed arm) is $LEAD_MODEL for runs from now on; the pre-registered $PREREG_LEAD_MODEL did not answer (${tried#; }). Mixed runs are reported separately by Lead PM model."
+    grep -qsF "Lead PM (mixed arm) is $LEAD_MODEL " "$RES/deviations.txt" || echo "$dev" >> "$RES/deviations.txt"
   fi
-  out=$(cd "$ROOT" && with_timeout 240 "$REAL_AGY" -p "Reply with the single word ok." --output-format text --print-timeout 180s \
-          --disable-slash-commands --mode plan --dangerously-skip-permissions --model "$LEAD_MODEL" 2>&1) \
-    || die "Antigravity refused the Lead PM's kind of call: $(echo "$out" | tail -3). Open agy once and sign in, then rerun."
-  printf '%s' "$out" | grep -qi ok || die "Antigravity answered something unexpected: $(echo "$out" | tail -2 | cut -c1-200)"
-  say "   $LEAD_MODEL in plan mode -> answered"
 
   say "-- Grok: $("$REAL_GROK" --version 2>&1 | head -1)"
+  # On a resumed batch, keep the Grok model the batch started with, so the arm doesn't change midway.
+  if [ -z "${GROK_MODEL:-}" ] && [ -f "$RES/meta.txt" ]; then
+    GROK_MODEL=$(sed -n 's/^architect (mixed): \(grok-[0-9][0-9.]*\)$/\1/p' "$RES/meta.txt" | head -1)
+    [ -n "$GROK_MODEL" ] && say "   keeping $GROK_MODEL from the batch's first run"
+  fi
   if [ -z "${GROK_MODEL:-}" ]; then
     GROK_MODEL=$("$REAL_GROK" models 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const ids=[...new Set(s.match(/\bgrok-\d+(?:\.\d+)?\b(?![-\w.])/g)||[])];const v=x=>x.slice(5).split(".").map(Number);ids.sort((a,b)=>{const[p,q]=[v(a),v(b)];return (p[0]-q[0])||((p[1]||0)-(q[1]||0))});process.stdout.write(ids.pop()||"")})')
     [ -n "$GROK_MODEL" ] || die "Could not read a grok-N.N model from 'grok models'. Set GROK_MODEL to one it lists, then rerun."
@@ -191,12 +249,11 @@ has_arm mixed && say "  mixed  = council full loop: Lead PM $LEAD_MODEL (Antigra
 has_arm solo && say "  solo   = council full loop, all Claude Code: Lead PM $SOLO_SIDE_MODEL, Chief Engineer $ENGINEER_MODEL, Chief Architect $SOLO_SIDE_MODEL"
 has_arm single && say "  single = one Claude Code agent on $ENGINEER_MODEL with the same task text"
 { echo "date: $(date '+%Y-%m-%d %H:%M %Z')"; echo "open-council-cli: $CLI_VERSION"; echo "benchmark commit: $(git -C "$BENCH" log -1 --format=%H -- . 2>/dev/null)";
-  echo "arms: $ARMS"; echo "lead (mixed): $LEAD_MODEL"; echo "engineer: $ENGINEER_MODEL"; echo "architect (mixed): ${GROK_MODEL:-n/a}"; echo "solo side seats: $SOLO_SIDE_MODEL";
+  echo "arms: $ARMS"; echo "lead (mixed): $LEAD_MODEL"; echo "pre-registered lead (mixed): $PREREG_LEAD_MODEL"; echo "engineer: $ENGINEER_MODEL"; echo "architect (mixed): ${GROK_MODEL:-n/a}"; echo "solo side seats: $SOLO_SIDE_MODEL";
   echo "council profile: $PROFILE"; echo "runs: council $RUNS_COUNCIL per task, single $RUNS_SINGLE per task"; } > "$RES/meta.txt"
 [ -n "${PREFLIGHT_ONLY:-}" ] && { say "Preflight passed."; exit 0; }
 
 # ---------------------------------------------------------------- one run
-LIMIT_RE='usage limit|limit reached|rate.limit|quota|resource.exhausted|too many requests|credit balance|out of credits|exceeded your|try again (later|in)'
 
 make_repo() { # <task> <dir>: the task's repo as a fresh git checkout on main
   mkdir -p "$2" && cp -R "$BENCH/tasks/$1/repo/." "$2/" &&
@@ -224,6 +281,7 @@ council_run() { # <arm> <task> <out> <work dir>
   make_repo "$task" "$w/app" || return 1
   (cd "$w/app" && COUNCIL_HOME="$w/h" node "$COUNCIL_JS" init --full $([ "$PROFILE" = quick ] && echo --quick) > "$out/init.log" 2>&1) || { cat "$out/init.log" >> "$out/cli.log"; return 1; }
   write_config "$arm" "$w/app/.council/config.yml"
+  [ "$arm" = mixed ] && echo "$LEAD_MODEL" > "$out/lead-model"
   (cd "$w/app" && git add -A && git -c user.email=bench@localhost -c user.name=bench commit -qm "Add .council")
   # A local bare repo stands in for GitHub, so the council's push step works as it would on a real
   # project and never reaches the network. Without an origin the push fails and a finished run reads as BLOCKED.
@@ -271,10 +329,18 @@ run_job() { # <task> <arm> <n>
     if [ "$arm" = single ]; then single_run "$task" "$out" "$w"; else council_run "$arm" "$task" "$out" "$w"; fi
     code=$?
     echo "$code" > "$out/exit"; echo $(( $(date +%s) - t0 )) > "$out/seconds"
+    # A usage limit or a sign-in prompt anywhere in the run makes it unscored, never a miss, and stops the batch.
+    local lim; lim=$(node "$BENCH/lib/limits.cjs" "$out" "$([ "$arm" = single ] && echo single || echo run)")
+    if [ -n "$lim" ]; then
+      local st=LIMIT; [ "$lim" = signin ] && st=SIGNIN
+      echo "$lim" > "$RES/STOP"
+      printf '{"status":"%s","detail":"%s"}\n' "$st" "$(printf '%s' "$lim" | tr -d '"\\' | cut -c1-200)" > "$out/score.json"
+      echo "$task $arm $n: $st, not scored ($lim)"
+      rm -rf "$w"; return 0
+    fi
     if [ "$code" != 0 ] || [ ! -f "$out/tree" ]; then
       local st=ERROR
       [ "$code" = 142 ] && st=TIMEOUT
-      if grep -qiE "$LIMIT_RE" "$out/cli.log" "$out/calls.jsonl" 2>/dev/null; then st=LIMIT; touch "$RES/STOP"; fi
       if [ "$arm" != single ] && grep -qs '"failures": *\[ *{' "$out/session/seats.json"; then st=SEAT-FAILURE; fi
       local detail; detail=$(grep -v '^\s*$' "$out/cli.log" 2>/dev/null | tail -1 | cut -c1-160 | tr -d '"\\')
       printf '{"status":"%s","detail":"exit %s: %s"}\n' "$st" "$code" "$detail" > "$out/score.json"
@@ -302,6 +368,10 @@ run_job() { # <task> <arm> <n>
   fi
   rm -rf "$jd"
   node "$BENCH/lib/flip.cjs" parse "$out" "$BENCH/tasks/$task"
+  # The judge is a Claude call too: on a limit the run keeps its score and is judged again on the next paste.
+  local jl; jl=$(node "$BENCH/lib/limits.cjs" "$out" judge)
+  [ -n "$jl" ] && echo "$jl" > "$RES/STOP"
+  return 0
 }
 
 # ---------------------------------------------------------------- the schedule
@@ -329,6 +399,14 @@ wait
 node "$BENCH/lib/summarize.cjs" "$RES" "$BENCH" > "$ROOT/summary.md"
 echo
 if [ -f "$RES/STOP" ]; then
-  echo "A seat hit a usage limit, so the batch stopped early. Wait for the limit to reset, then run the same command: it picks up where it stopped."
+  why=$(head -1 "$RES/STOP")
+  case "$why" in
+    signin) echo "Antigravity asked to sign in again, so the batch stopped early. In a new Terminal window run: agy"
+            echo "Sign in there, then paste the same command: it picks up where it stopped.";;
+    "limit claude"*) echo "Your Claude plan's usage limit was reached, so the batch stopped early (${why#limit })."
+            echo "The runs it stopped are not scored and never count as misses. Paste the same command after the limit resets: it picks up where it stopped.";;
+    *) echo "A seat hit a usage limit, so the batch stopped early (${why#limit })."
+       echo "The runs it stopped are not scored and never count as misses. Paste the same command after the limit resets: it picks up where it stopped.";;
+  esac
 fi
 echo "Summary: $ROOT/summary.md"

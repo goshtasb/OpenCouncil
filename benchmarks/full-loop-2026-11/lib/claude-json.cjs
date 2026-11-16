@@ -10,7 +10,7 @@ let j = null;
 try { j = JSON.parse(raw); } catch { /* not JSON: pass it through untouched */ }
 if (!j || typeof j !== 'object') {
   process.stdout.write(raw);
-  if (log) fs.appendFileSync(log, JSON.stringify({ vendor: 'claude', alias, seconds: +seconds, code: +code, parse_error: true }) + '\n');
+  if (log) fs.appendFileSync(log, JSON.stringify({ vendor: 'claude', alias, seconds: +seconds, code: +code, parse_error: true, error: raw.trim().slice(-300) }) + '\n');
   process.exit(0);
 }
 process.stdout.write(typeof j.result === 'string' ? j.result : '');

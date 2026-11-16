@@ -49,6 +49,11 @@ A run **passes** when, on the run's final working tree, the task's original test
 - The final tree is the single agent's folder when it finishes, and the council's execution worktree when execution ends (done or blocked).
 - **A council that stalls in planning, or blocks in execution, is scored on whatever its tree holds.** A stall built nothing, so it is scored on the untouched repo and counts as a miss. Stalling is the council's own outcome, not an error.
 - **Not scored, and re-run:** a crash of the harness or a CLI, a run killed by the time limit (council 2 hours, single agent 30 minutes), a usage limit (the run stops so it can resume later), or a seat that failed to answer. These say nothing about either arm's work.
+- **How a usage limit is detected:** only from what the CLIs report about themselves: Claude's error results in the call log, and the stderr of Claude Code, Antigravity and Grok (`lib/limits.cjs`). Model text is never read for this, so a task about quotas or rate limits can't trip it. A limit anywhere in a run, even one the run recovered from, makes the run unscored and stops the batch after the runs in flight; an Antigravity sign-in prompt does the same. A limit hit by the late sign-off judge keeps the run's score and judges it again on the next run.
+
+### If the pre-registered Lead PM has no quota
+
+`gemini-4-argon-high` may be out of its Antigravity quota when the batch runs (it was for days in the 10-PR benchmark). `run.sh` then takes `LEAD_CANDIDATES`, Lead PM models to try in order, and uses the first that answers the same plan-mode call the seat makes (`auto` adds every other Gemini model `agy models` lists, never the retired `gemini-3.1-pro-high`). With no candidates it uses only the pre-registered model. A swap is written to `results/deviations.txt` and shown at the top of `summary.md`; each mixed run records the model it ran on (`lead-model`), and the summary sets each Lead PM model's mixed runs against the single agent on the same tasks only.
 
 ## Analysis (fixed now)
 
@@ -85,12 +90,12 @@ No mixed-council pilot ran here: Antigravity and Grok are signed in only on the 
 bash benchmarks/full-loop-2026-11/run.sh
 ```
 
-It checks every CLI is signed in and answers, installs `open-council-cli@0.4.0` into its own folder, then runs every task × arm and writes `summary.md` into `$BENCH_ROOT` (default `~/oc-full-loop`). Re-running resumes; finished runs are kept. `PREFLIGHT_ONLY=1` checks sign-ins and stops. Expect about 5 to 6 hours: the one full-profile council run in the pilot took 36 minutes, so 15 mixed runs two at a time take about 4.5 hours, and 50 single-agent runs (1 to 3 minutes each) about an hour. A plan usage limit stops the run cleanly; running it again later resumes. The header of `run.sh` lists the other settings.
+It checks every CLI is signed in and answers, installs `open-council-cli@0.4.0` into its own folder, then runs every task × arm and writes `summary.md` into `$BENCH_ROOT` (default `~/oc-full-loop`). Re-running resumes; finished runs are kept. `PREFLIGHT_ONLY=1` checks sign-ins and stops. Expect about 5 to 6 hours: the one full-profile council run in the pilot took 36 minutes, so 15 mixed runs two at a time take about 4.5 hours, and 50 single-agent runs (1 to 3 minutes each) about an hour. A plan usage limit stops the batch cleanly and says which plan hit it; running it again later resumes. Only one copy runs at a time. The header of `run.sh` lists the other settings.
 
 ## Files
 
 - `tasks/<task>/` the five tasks, as above
-- `run.sh` the runner; `lib/score.cjs` scoring, `lib/config.cjs` the council config per arm, `lib/flip.cjs` the late sign-off judge, `lib/summarize.cjs` the summary, `lib/claude-json.cjs` call logging
+- `run.sh` the runner; `lib/score.cjs` scoring, `lib/config.cjs` the council config per arm, `lib/flip.cjs` the late sign-off judge, `lib/summarize.cjs` the summary, `lib/claude-json.cjs` call logging, `lib/limits.cjs` usage-limit and sign-in detection
 
 ## Changes after pre-registration
 
