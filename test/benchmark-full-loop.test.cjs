@@ -11,6 +11,8 @@ const { execFileSync, spawnSync } = require('child_process');
 const BENCH = path.join(__dirname, '..', 'benchmarks', 'full-loop-2026-11');
 const tmp = prefix => fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 const hasPerl = spawnSync('perl', ['-v']).status === 0;
+// run.sh itself requires Node 20 or newer.
+const canRun = !hasPerl ? 'needs perl' : +process.versions.node.split('.')[0] < 20 ? 'run.sh needs Node 20' : false;
 const LIMIT_TEXT = "You've hit your weekly limit · resets Nov 21, 5pm";
 
 // ------------------------------------------------------------------ limits.cjs
@@ -82,7 +84,7 @@ function run(dir, bin, env) {
   return { code: r.status, out: r.stdout + r.stderr, read };
 }
 
-test('preflight: out of quota, the Lead PM swaps to the next candidate, logged as a deviation', { skip: !hasPerl && 'needs perl' }, () => {
+test('preflight: out of quota, the Lead PM swaps to the next candidate, logged as a deviation', { skip: canRun }, () => {
   const dir = tmp('fl-pre-');
   const bin = stubs(dir, { down: ['gemini-4-argon-high'] });
   const r = run(dir, bin, { PREFLIGHT_ONLY: '1', LEAD_CANDIDATES: 'gemini-4-argon-high gemini-3.8-flash-high auto' });
@@ -97,14 +99,14 @@ test('preflight: out of quota, the Lead PM swaps to the next candidate, logged a
   assert.match(r2.out, /No Lead PM model answered; gemini-4-argon-high/);
 });
 
-test('preflight: a Claude usage limit says so plainly and runs nothing', { skip: !hasPerl && 'needs perl' }, () => {
+test('preflight: a Claude usage limit says so plainly and runs nothing', { skip: canRun }, () => {
   const dir = tmp('fl-pre-');
   const r = run(dir, stubs(dir, { claudeLimit: true }), { ARMS: 'single' });
   assert.notEqual(r.code, 0);
   assert.match(r.out, /Your Claude plan's usage limit is reached .*Nothing has run\. Paste the same command again after it resets/);
 });
 
-test('only one batch runs at a time', { skip: !hasPerl && 'needs perl' }, () => {
+test('only one batch runs at a time', { skip: canRun }, () => {
   const dir = tmp('fl-lock-');
   const bin = stubs(dir);
   fs.mkdirSync(path.join(dir, 'root', '.running'), { recursive: true });
@@ -119,7 +121,7 @@ test('only one batch runs at a time', { skip: !hasPerl && 'needs perl' }, () => 
   assert.equal(fs.existsSync(path.join(dir, 'root', '.running')), false, 'the lock is released on exit');
 });
 
-test('a Claude usage limit mid-batch stops it, is not scored as a miss, and the same command resumes', { skip: !hasPerl && 'needs perl' }, () => {
+test('a Claude usage limit mid-batch stops it, is not scored as a miss, and the same command resumes', { skip: canRun }, () => {
   const dir = tmp('fl-run-');
   const bin = stubs(dir);
   const env = { ARMS: 'single', TASKS: 'late-fees', RUNS_SINGLE: '2', PARALLEL: '1' };
