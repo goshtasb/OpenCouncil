@@ -34,7 +34,7 @@ export function resolveGates(config: CouncilConfig): VerificationGate[] {
 }
 
 /** Runs every gate in order, recording an evidence row per gate. Required failures block the pull request. */
-export async function runGates(gates: VerificationGate[], options: { cwd: string; failFast?: boolean }): Promise<GateResult[]> {
+export async function runGates(gates: VerificationGate[], options: { cwd: string; failFast?: boolean; onOutput?: (gate: string, output: string) => void }): Promise<GateResult[]> {
   const results: GateResult[] = [];
   for (const gate of gates) {
     const timeoutSeconds = gate.timeout_seconds ?? DEFAULT_GATE_TIMEOUT_SECONDS;
@@ -44,6 +44,7 @@ export async function runGates(gates: VerificationGate[], options: { cwd: string
     let result: GateResult;
     try {
       const run = await execa(gate.command, { cwd: options.cwd, shell: true, all: true, timeout: timeoutSeconds * 1000 });
+      options.onOutput?.(gate.name, run.all || '');
       result = {
         name: gate.name, command: gate.command, required, standard: gate.standard,
         exitCode: run.exitCode ?? 0, passed: true, durationMs: Date.now() - startedAt,
@@ -51,6 +52,7 @@ export async function runGates(gates: VerificationGate[], options: { cwd: string
       };
       logger.success(`Gate ${gate.name} passed (${((Date.now() - startedAt) / 1000).toFixed(1)}s)`);
     } catch (err: any) {
+      options.onOutput?.(gate.name, err.all || '');
       result = {
         name: gate.name, command: gate.command, required, standard: gate.standard,
         exitCode: err.exitCode ?? null, passed: false, durationMs: Date.now() - startedAt,

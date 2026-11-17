@@ -10,6 +10,7 @@ import { registerCouncilCommands } from './commands/council.js';
 import { registerExecutionCommands } from './commands/execution.js';
 import { registerReplayCommands } from './commands/replay.js';
 import { registerReviewCommands } from './commands/review.js';
+import { registerBuildCommands } from './commands/build.js';
 
 const repoRoot = resolveRepoRoot();
 
@@ -36,5 +37,6 @@ registerCouncilCommands(program, context);
 registerExecutionCommands(program, context);
 registerReplayCommands(program, context);
 registerReviewCommands(program, context);
+registerBuildCommands(program, context);
 
 program.parseAsync(process.argv);

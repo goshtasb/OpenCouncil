@@ -9,6 +9,8 @@ export interface VerificationInput {
   installArtifacts: string[];
   gates: VerificationGate[];
   failFast?: boolean;
+  /** Receives each gate's whole output (the evidence keeps only its tail). */
+  onOutput?: (gate: string, output: string) => void;
 }
 
 export type VerificationResult =
@@ -35,7 +37,7 @@ export async function verifyExecution(input: VerificationInput): Promise<Verific
     return fail(`Uncommitted changes remain in the execution checkout:\n${dirty}`);
   }
 
-  const gates = await runGates(input.gates, { cwd: input.cwd, failFast: input.failFast });
+  const gates = await runGates(input.gates, { cwd: input.cwd, failFast: input.failFast, onOutput: input.onOutput });
   const failures = failedRequiredGates(gates);
   if (failures.length > 0) {
     return fail(`${failures.length} required verification gate(s) failed: ${failures.map(f => f.name).join(', ')}\n\n${describeGateFailures(gates)}`, gates);
