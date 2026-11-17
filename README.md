@@ -170,6 +170,23 @@ Node 18+, macOS or Linux. More options under [Other install methods](#-other-ins
 
 **What it costs you:** a paid Claude Code plan is enough (solo mode), or your own API key. A review takes about four minutes; a full council about 5 to 40. Both use your plan's quota or your key. See [Honest limits](#-honest-limits) before your first run.
 
+## 🧪 Build it, then test every risk the council names (new)
+
+```bash
+council build "make chargeCustomer retry gateway timeouts, up to 3 times"
+```
+
+One agent (the Chief Engineer seat) builds the task in an isolated clone, the way a single agent would. Then Claude, Gemini and Grok each read the built change in a read-only checkout and name up to five ways it can still be wrong, each as a scenario a test can show (`RISK`, `WHEN`, `EXPECT`, `WHERE`). Every risk becomes a required test:
+
+- The builder writes a test per risk with its id in the name (`[R3] a renewal retried the next day is charged once`) and fixes the code until it passes.
+- The harness checks it, not the model: the tagged test exists, is not skipped or marked todo, and your test command's output shows it ran; the test command passes; no test file was deleted.
+- There is no deferring. The one way out is a rejection that quotes the task or a file in the repository word for word, and the harness checks the quote.
+- A seat that fails (a usage limit, a lost login) is listed as a gap; the build goes on with the other seats' risks.
+
+When everything passes, the branch `council/<slug>` is copied into your repository without touching your checkout (`--pr` also pushes it and opens a pull request). The build report lists every risk, who named it and how it ended. It needs a test command (`project.test_command` or a detected `npm test`), because every risk has to end as something that runs. `--risk-rounds 2` (or 3) has the seats look again at the tested change.
+
+Why: on our five-task benchmark the debate flow lost to one Claude agent, and its plans named a real double-charge risk and then deferred it. This design keeps the three companies' eyes on the change and takes away the deferring. Its own numbers are not measured yet: the pre-registered comparison is in [`benchmarks/risk-tests-2026-11`](benchmarks/risk-tests-2026-11/README.md).
+
 ## 📘 Step-by-step guide: the full council
 
 `council review` stops at the argument. The full council goes all the way: the seats agree on a PRD, you approve it, the Chief Engineer builds it in an isolated clone, your gates run, and a pull request opens. Nothing is written to your repository before you approve.
@@ -305,6 +322,7 @@ A council that went wrong is just as useful here. Post yours in [Discussions →
 ## 🚧 Honest limits
 
 - `council review` has one measured run at 3 rounds: 6 minutes, with the useful objections all in round 1 (2 min 44 s). That is why the default is now one quick round. The quick round's own time is not yet measured; the Lead PM reading the repository is likely the slowest part.
+- `council build` is new and unmeasured: no real run yet. On the five-task benchmark the debate flow (the full council) passed every hidden test in 6 of 14 runs, counting crashes, against 16 of 20 for one Claude agent, at about 60 times the time. `council build` is the answer to that result, and its own comparison is pre-registered in `benchmarks/risk-tests-2026-11`.
 - A review with only Claude installed is a single-vendor review: the seats differ by model, persona and tool access, not by company. The review labels it that way.
 - A full council takes roughly **10–40 minutes** and spends real subscription quota. The quick profile is bounded at 4 rounds; its typical time is not yet measured on enough runs to quote.
 - Live runs so far are single digits. Before v0.2.0, **one in five stalled** without producing anything. v0.2.0 writes the last draft and the open objections on a stall, arbitrates early when objections stop dropping, and retries a seat that returns nothing once. Whether that moves the stall rate is not yet known; the numbers will be updated here as runs accumulate.

@@ -124,6 +124,8 @@ export interface CouncilConfig {
     chief_engineer: SeatConfig;
     chief_architect: SeatConfig;
   };
+  /** `council build`: one agent builds, the three seats name risks, and every risk becomes a required test. */
+  build?: BuildSettings;
   backlog: {
     wip_limit: number;
     auto_merge_dev: boolean;
@@ -139,6 +141,17 @@ export interface CouncilConfig {
     /** Stop at the first failed required gate instead of collecting every failure. Defaults to false. */
     fail_fast?: boolean;
   };
+}
+
+export interface BuildSettings {
+  /** Times the three seats look for risks: once after the build, then again after the risk tests if above 1. Default 1, at most 3. */
+  risk_rounds?: number;
+  /** Most risks one seat may name per round. Default 5. */
+  risks_per_seat?: number;
+  /** Time limit for one seat's risk list, in seconds. Default 600. */
+  risk_timeout_seconds?: number;
+  /** Tries the builder gets to make every risk test and gate pass. Default: council.execution_attempts. */
+  attempts?: number;
 }
 
 export interface VerificationGate {
