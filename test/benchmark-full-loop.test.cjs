@@ -165,6 +165,31 @@ test('summarize: a Lead PM swap is listed and each model is compared on its own 
   assert.match(md, /late-fees mixed 1: PASS\*\* \(1\.0 min, Lead PM gemini-3\.8-flash-high\)/);
 });
 
+test('summarize: council crashes and timeouts are counted as misses in a second table, limits and sign-ins are not', () => {
+  const res = tmp('fl-sum-');
+  const put = (task, r, score) => {
+    const d = path.join(res, task, r); fs.mkdirSync(d, { recursive: true });
+    fs.writeFileSync(path.join(d, 'score.json'), JSON.stringify(score));
+  };
+  put('late-fees', 'mixed-1', { status: 'COUNCIL-ERROR', detail: 'exit 3' });
+  put('late-fees', 'mixed-2', { status: 'TIMEOUT', detail: 'exit 142' });
+  put('late-fees', 'mixed-3', { status: 'SIGNIN', detail: 'signin' });
+  put('late-fees', 'single-1', { status: 'OK', passed: true });
+  put('late-fees', 'single-2', { status: 'LIMIT', detail: 'limit claude' });
+  put('daily-usage', 'mixed-1', { status: 'OK', passed: true });
+  put('daily-usage', 'single-1', { status: 'OK', passed: true });
+  const md = execFileSync('node', [path.join(BENCH, 'lib', 'summarize.cjs'), res, BENCH]).toString();
+  const primary = md.split('## Passed every hidden test')[1].split('\n## ')[0];
+  assert.match(primary, /\| late-fees \| - \| 1\/1 \|/, 'the primary table is unchanged');
+  const second = md.split('## Counting crashes and timeouts as misses (not pre-registered)')[1].split('\n## ')[0];
+  assert.match(second, /the 2 runs that ended on a council error/);
+  assert.match(second, /\| late-fees \| 0\/2 \| 1\/1 \|/);
+  assert.match(second, /\| \*\*All tasks\*\* \| \*\*1\/3\*\* \| \*\*2\/2\*\* \|/);
+  // With no crash the extra table is left out.
+  fs.rmSync(path.join(res, 'late-fees'), { recursive: true });
+  assert.doesNotMatch(execFileSync('node', [path.join(BENCH, 'lib', 'summarize.cjs'), res, BENCH]).toString(), /Counting crashes/);
+});
+
 // ------------------------------------------------------------------ Antigravity sign-in prompts
 test('an Antigravity sign-in prompt stops the batch at once, and later Lead PM calls are skipped, not sent', { skip: canRun }, () => {
   const dir = tmp('fl-signin-');

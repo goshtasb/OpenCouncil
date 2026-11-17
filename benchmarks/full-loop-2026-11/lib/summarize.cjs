@@ -42,12 +42,25 @@ if (devs.length) L.push('## Deviations from the pre-registration', '', ...devs.m
 const unscored = {};
 for (const r of runs) if (r.status !== 'OK') unscored[r.status] = (unscored[r.status] || 0) + 1;
 const why = Object.entries(unscored).map(([k, v]) => `${v} ${k}`).join(', ');
-L.push(`${scored.length} scored runs, ${runs.length - scored.length} not scored${why ? ` (${why})` : ''}. Runs stopped by an error, a timeout, a usage limit, a sign-in prompt or a seat failure are re-run, never counted as misses.`, '');
+L.push(`${scored.length} scored runs, ${runs.length - scored.length} not scored${why ? ` (${why})` : ''}. Runs stopped by an error, a timeout, a usage limit, a sign-in prompt or a seat failure are re-run, and the primary table never counts them as misses; the table after it counts crashes and timeouts as misses.`, '');
 
 L.push('## Passed every hidden test (primary metric)', '', `| Task | ${arms.join(' | ')} |`, `| --- |${arms.map(() => ' --- |').join('')}`);
 const cell = rs => (rs.length ? `${rs.filter(r => r.passed).length}/${rs.length}` : '-');
 for (const t of tasks) L.push(`| ${t} | ${arms.map(a => cell(scored.filter(r => r.task === t && r.arm === a))).join(' | ')} |`);
 L.push(`| **All tasks** | ${arms.map(a => `**${cell(scored.filter(r => r.arm === a))}**`).join(' | ')} |`, '');
+
+// Not pre-registered (added 2026-11-16, see the README): a council that crashed or ran out of time gave its user
+// nothing, so this view counts those runs as misses. Usage limits, sign-in prompts and harness errors stay out.
+const CRASH = new Set(['COUNCIL-ERROR', 'SEAT-FAILURE', 'TIMEOUT']);
+const crashed = runs.filter(r => CRASH.has(r.status));
+if (crashed.length) {
+  const withCrashes = scored.concat(crashed);
+  L.push('## Counting crashes and timeouts as misses (not pre-registered)', '');
+  L.push(`Same table, with the ${crashed.length} run${crashed.length === 1 ? '' : 's'} that ended on a council error, a seat failure or a timeout counted as misses, since the user got no result from them. Usage limits, sign-in prompts and harness errors are still left out.`, '');
+  L.push(`| Task | ${arms.join(' | ')} |`, `| --- |${arms.map(() => ' --- |').join('')}`);
+  for (const t of tasks) L.push(`| ${t} | ${arms.map(a => cell(withCrashes.filter(r => r.task === t && r.arm === a))).join(' | ')} |`);
+  L.push(`| **All tasks** | ${arms.map(a => `**${cell(withCrashes.filter(r => r.arm === a))}**`).join(' | ')} |`, '');
+}
 
 const leads = [...new Set(scored.filter(r => r.arm === 'mixed' && r.lead).map(r => r.lead))];
 const prereg = (/^pre-registered lead \(mixed\): (\S+)/m.exec(text(path.join(res, 'meta.txt'))) || [])[1];
