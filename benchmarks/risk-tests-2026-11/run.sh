@@ -6,6 +6,7 @@
 #   PREFLIGHT_ONLY=1 bash run.sh       check every CLI is signed in and answers, then stop
 #   RUNS_BUILD=2 bash run.sh           fewer council build runs per task (default 3)
 #   RUNS_SINGLE=3 bash run.sh          fewer single-agent runs per task (default 5)
+#   DESKTOP_COPY=0 bash run.sh         do not copy summary.md to ~/Desktop/council-build-results.md
 #   GROK_MODEL=grok-4.7 bash run.sh    pin the Grok model (default: the newest plain grok-N.N that `grok models` lists)
 #   LEAD_CANDIDATES="gemini-4-argon-high auto" bash run.sh
 #                                      Lead PM models to try in order when the pre-registered one has no quota
@@ -321,7 +322,8 @@ done < "$RES/schedule.txt"
 wait
 
 node "$BENCH/lib/summarize.cjs" "$RES" > "$ROOT/summary.md"
-[ -d "$HOME/Desktop" ] && cp "$ROOT/summary.md" "$HOME/Desktop/council-build-results.md"
+DESKTOP_COPY=${DESKTOP_COPY:-1}
+[ "$DESKTOP_COPY" = 1 ] && [ -d "$HOME/Desktop" ] && cp "$ROOT/summary.md" "$HOME/Desktop/council-build-results.md"
 echo
 if [ -f "$RES/STOP" ]; then
   why=$(head -1 "$RES/STOP")
@@ -333,4 +335,4 @@ if [ -f "$RES/STOP" ]; then
   esac
 fi
 echo "Summary: $ROOT/summary.md"
-[ -d "$HOME/Desktop" ] && echo "Copied to your Desktop: council-build-results.md"
+[ "$DESKTOP_COPY" = 1 ] && [ -d "$HOME/Desktop" ] && echo "Copied to your Desktop: council-build-results.md"
