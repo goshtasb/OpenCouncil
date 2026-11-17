@@ -74,6 +74,14 @@ test('a tagged test counts when the gate output names its file rather than the t
   assert.strictEqual(o.status, 'tested');
 });
 
+test('a tagged test with no test output at all does not count as run', () => {
+  const [o] = lib.checkLedger({
+    risks: [{ id: 'R1', seat: 'lead_pm', vendor: 'Gemini', round: 1, title: 't', when: 'w', expect: 'e', where: '-' }],
+    ledger: '', testFiles: [{ path: 'test/council-risks.test.js', content: "it('[R1] x')" }], quotable: [], gateOutput: ''
+  });
+  assert.strictEqual(o.status, 'missing');
+});
+
 test('skippedTests finds skip and todo markers added to test files only', () => {
   const diff = [
     '+++ b/test/a.test.js',
@@ -83,10 +91,13 @@ test('skippedTests finds skip and todo markers added to test files only', () => 
     '+++ b/src/flags.js',
     "+const config = { skip: true };",
     '+++ b/tests/test_x.py',
-    '+@pytest.mark.xfail'
+    '+@pytest.mark.xfail',
+    '+++ b/test/b.test.js',
+    "+test('[R4] w', (t) => { t.skip('later'); });",
+    "+it('[R5] v', function () { this.skip(); });"
   ].join('\n');
   const hits = lib.skippedTests(diff);
-  assert.strictEqual(hits.length, 3);
+  assert.strictEqual(hits.length, 5, 'a skip from inside the test body counts too');
   assert.ok(hits.every(h => !h.startsWith('src/')));
 });
 
@@ -242,14 +253,16 @@ test('council build: a seat that fails is a recorded gap, and the build goes on 
   assert.strictEqual(ctx.adapters.eng.calls.length, 2, 'no risks, gates pass: the builder is not called again');
 });
 
-test('council build: a read-only seat that edits the checkout has its edits dropped', async () => {
+test('council build: a read-only seat that edits the checkout or adds files has them dropped', async () => {
   const ctx = project();
   ctx.adapters.eng.responses.push(buildSum, 'NO RISKS');
-  ctx.adapters.pm.responses.push((prompt, o) => { fs.writeFileSync(path.join(o.cwd, 'src', 'sum.js'), 'broken('); return 'NO RISKS'; });
+  ctx.adapters.pm.responses.push((prompt, o) => { fs.writeFileSync(path.join(o.cwd, 'src', 'sum.js'), 'broken('); fs.writeFileSync(path.join(o.cwd, 'src', 'backdoor.js'), 'x'); return 'NO RISKS'; });
   ctx.adapters.arch.responses.push('NO RISKS');
   const result = await ctx.engine.run(ctx.repo, { task: 'Add a sum function.', slug: 'tamper', fetchBranch: false });
   assert.strictEqual(result.outcome, 'DONE', result.reason);
   assert.match(fs.readFileSync(path.join(result.worktree, 'src', 'sum.js'), 'utf8'), /reduce/);
+  assert.ok(!fs.existsSync(path.join(result.worktree, 'src', 'backdoor.js')), 'a file a reviewer created is removed');
+  assert.strictEqual(git(result.worktree, 'log', '--all', '--format=%H', '--', 'src/backdoor.js'), '', 'and never committed');
 });
 
 test('council build: a second risk round sends the ledger so far and stops when no new risk comes', async () => {

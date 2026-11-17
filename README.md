@@ -179,7 +179,7 @@ council build "make chargeCustomer retry gateway timeouts, up to 3 times"
 One agent (the Chief Engineer seat) builds the task in an isolated clone, the way a single agent would. Then Claude, Gemini and Grok each read the built change in a read-only checkout and name up to five ways it can still be wrong, each as a scenario a test can show (`RISK`, `WHEN`, `EXPECT`, `WHERE`). Every risk becomes a required test:
 
 - The builder writes a test per risk with its id in the name (`[R3] a renewal retried the next day is charged once`) and fixes the code until it passes.
-- The harness checks it, not the model: the tagged test exists, is not skipped or marked todo, and was run by your test command; your existing tests still pass; nothing was deleted.
+- The harness checks it, not the model: the tagged test exists, is not skipped or marked todo, and your test command's output shows it ran; the test command passes; no test file was deleted.
 - There is no deferring. The one way out is a rejection that quotes the task or a file in the repository word for word, and the harness checks the quote.
 - A seat that fails (a usage limit, a lost login) is listed as a gap; the build goes on with the other seats' risks.
 

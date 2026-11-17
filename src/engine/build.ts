@@ -179,7 +179,7 @@ export class BuildEngine {
       try {
         const published = await publishBranch({
           cwd: worktree, branch, baseBranch: this.config.project.base_branch, title: `[Council] ${options.slug}`,
-          body: this.prBody(ctx, risks, outcomes, gaps), autoMerge: this.config.backlog.auto_merge_dev
+          body: this.prBody(ctx, risks, outcomes, gaps), autoMerge: false // `council build --pr` opens a pull request for a person to merge; it never turns on auto-merge
         });
         return finish('DONE', undefined, { prUrl: published.prUrl, localBranch });
       } catch (err: any) {
@@ -204,6 +204,7 @@ export class BuildEngine {
     });
     fs.writeFileSync(path.join(roundDir, 'prompt.md'), prompt, 'utf8');
     logger.council('HARNESS', `Risk round ${round}: ${RISK_SEATS.map(s => SEAT_LABELS[s]).join(', ')} read the change in parallel...`);
+    const untrackedBefore = new Set(await this.untracked(ctx));
     const answers = await Promise.all(RISK_SEATS.map(async seat => {
       try {
         const reply = await runSeat(this.config, this.sessions, ctx.sessionId, seat, `risks round ${round}`, prompt, {
@@ -220,11 +221,17 @@ export class BuildEngine {
         return null;
       }
     }));
-    // A read-only seat must not have changed the checkout; if one did anyway, its edits are dropped.
+    // A read-only seat must not have changed the checkout; if one did anyway, its edits and new files are dropped,
+    // so nothing a reviewer wrote can be committed later with the builder's work.
     const { stdout: touched } = await execa('git', ['status', '--porcelain', '--untracked-files=no'], { cwd: ctx.worktree });
     if (touched.trim()) {
       logger.warn(`A seat changed tracked files during the risk round; dropping those edits:\n${touched}`);
       await execa('git', ['checkout', '--', '.'], { cwd: ctx.worktree });
+    }
+    const added = (await this.untracked(ctx)).filter(f => !untrackedBefore.has(f) && f !== RISK_LEDGER_FILE);
+    if (added.length) {
+      logger.warn(`A seat created files during the risk round; removing them: ${added.join(', ')}`);
+      for (const f of added) fs.rmSync(path.join(ctx.worktree, f), { force: true });
     }
     const fresh: Risk[] = [];
     let next = known.length + 1;
@@ -341,6 +348,12 @@ export class BuildEngine {
     await execa('git', ['add', '-A', '--', ...paths], { cwd: ctx.worktree });
     await execa('git', ['-c', 'user.name=Open Council', '-c', 'user.email=council@localhost', 'commit', '-q', '--no-verify', '-m', `${what}: changes the builder left uncommitted`], { cwd: ctx.worktree, reject: false });
     this.sessions.logEvent(ctx.sessionId, `Committed ${paths.length} file(s) the builder left uncommitted (${what}).`);
+  }
+
+  /** Untracked, not ignored files in the checkout, relative to its root. */
+  private async untracked(ctx: BuildContext): Promise<string[]> {
+    const { stdout } = await execa('git', ['ls-files', '--others', '--exclude-standard', '-z'], { cwd: ctx.worktree });
+    return stdout.split('\0').filter(Boolean);
   }
 
   private async hasCommits(ctx: BuildContext): Promise<boolean> {

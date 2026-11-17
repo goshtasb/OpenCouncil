@@ -82,8 +82,8 @@ export function saysNoRisks(reply: string): boolean {
 /** Paths that are test files in the usual layouts of JavaScript, TypeScript, Python, Go, Rust, Ruby and Java projects. */
 export const TEST_PATH = /(^|\/)(test|tests|__tests__|spec|specs)\/|[._-](test|spec)\.[cm]?[jt]sx?$|_test\.(go|py|rb)$|(^|\/)test_[^/]*\.py$|Tests?\.(java|kt|cs)$/i;
 
-/** A test that does not run: skipped, todo, xit, pytest skip/xfail, Go t.Skip, Rust #[ignore]. */
-export const SKIP_MARKER = /\b(it|test|describe|suite|context)\s*\.\s*(skip|todo|fixme)\s*\(|\bx(it|test|describe)\s*\(|[{,]\s*(skip|todo)\s*:\s*(true|['"`])|@pytest\.mark\.(skip|skipif|xfail)\b|\bpytest\.skip\s*\(|\bt\.Skip(Now|f)?\s*\(|#\[ignore\]|@(Disabled|Ignore)\b/;
+/** A test that does not run: skipped, todo, xit, node:test's t.skip()/t.todo() and mocha's this.skip() inside a test, pytest skip/xfail, Go t.Skip, Rust #[ignore]. */
+export const SKIP_MARKER = /\b(it|test|describe|suite|context)\s*\.\s*(skip|todo|fixme)\s*\(|\b(t|ctx|this)\s*\.\s*(skip|todo)\s*\(|\bx(it|test|describe)\s*\(|[{,]\s*(skip|todo)\s*:\s*(true|['"`])|@pytest\.mark\.(skip|skipif|xfail)\b|\bpytest\.skip\s*\(|\bt\.Skip(Now|f)?\s*\(|#\[ignore\]|@(Disabled|Ignore)\b/;
 
 /** The risk ids a piece of text tags, as `[R3]`, `[R3][R5]` or `[R3, R5]`. */
 export function taggedIds(text: string): Set<string> {
@@ -107,7 +107,7 @@ export interface LedgerInput {
   testFiles: Array<{ path: string; content: string }>;
   /** Text a rejection may quote: the task, and every text file tracked at the base commit. */
   quotable: Array<{ source: string; text: string }>;
-  /** Everything the gates printed, to confirm each tagged test ran. Empty when the gates did not run. */
+  /** Everything the gates printed, to confirm each tagged test ran. */
   gateOutput: string;
 }
 
@@ -115,8 +115,8 @@ export interface LedgerInput {
  * Decides, for every risk, whether it ended as a required test, a rejection whose quote the harness found word for word
  * in the task or the repository, or neither. Neither blocks the build.
  *
- * A risk is "tested" when a test file changed since the base commit tags its id, and the gates' output shows that file
- * or the tag (so the test was actually run by the project's test command).
+ * A risk is "tested" when a test file changed since the base commit tags its id, and the gates' output shows the tag or
+ * that file's path (so the project's test command actually ran it). Empty output proves nothing and counts as not run.
  */
 export function checkLedger(input: LedgerInput): RiskOutcome[] {
   const rejections = new Map<string, { quote: string; source: string }>();
@@ -129,12 +129,13 @@ export function checkLedger(input: LedgerInput): RiskOutcome[] {
   for (const risk of input.risks) {
     const files = input.testFiles.filter(f => taggedIds(f.content).has(risk.id));
     if (files.length > 0) {
+      // Proof the test ran: its tag in the output, or (for reporters that list files, not tests) its file's full path.
       const ran = output.includes(`[${risk.id}]`) || new RegExp(`\\[[^\\]]*\\b${risk.id}\\b[^\\]]*\\]`).test(output)
-        || files.some(f => output.includes(f.path) || output.includes(f.path.split('/').pop()!));
-      if (!output || ran) {
+        || files.some(f => output.includes(f.path));
+      if (ran) {
         outcomes.push({ id: risk.id, status: 'tested', files: files.map(f => f.path) });
       } else {
-        outcomes.push({ id: risk.id, status: 'missing', reason: `a test tags [${risk.id}] in ${files.map(f => f.path).join(', ')}, but the test command's output never shows that test or its file, so it may not run` });
+        outcomes.push({ id: risk.id, status: 'missing', reason: `a test tags [${risk.id}] in ${files.map(f => f.path).join(', ')}, but the test command's output never shows that test or its file, so it may not run (make the test command list the tests it runs, or put the test where it runs)` });
       }
       continue;
     }
