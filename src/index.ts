@@ -31,3 +31,5 @@ export * from './replay/play.js';
 export * from './replay/markdown-replay.js';
 export * from './review/quick-review.js';
 export * from './review/preflight.js';
+export * from './polish/prompts.js';
+export * from './polish/polish.js';

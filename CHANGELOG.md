@@ -5,6 +5,9 @@ versions follow [SemVer](https://semver.org/). Get notified of new versions with
 
 ## [Unreleased]
 
+### Added
+- `council polish` polishes an idea instead of a change: Claude, Gemini and Grok each critique it blind and in parallel, then Claude merges the anonymous critiques into one version and lists where they disagree. `--rebuttal` adds one reply per critic to the merged version. 4 calls, or 7 with `--rebuttal`; no debate rounds, tie-break or sign-off. No repository needed, and every seat runs with no tools in an empty folder.
+
 ## [0.4.0] — 2026-11-10
 
 A first review on any setup: it checks which AIs are ready, runs with those, and finishes even when a seat fails.

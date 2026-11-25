@@ -35,6 +35,21 @@ npx open-council-cli review
 
 </div>
 
+## ✨ Polish an idea
+
+`council polish` runs a raw idea past Claude, Gemini and Grok and hands back one polished version. It needs no repository and sends nothing but the idea.
+
+```bash
+npx open-council-cli polish "Borrowers' AI agents shop for loans; lenders publish pricing through one protocol"
+npx open-council-cli polish --file idea.md --rebuttal
+```
+
+1. **Blind pass:** each AI critiques and extends the idea on its own, without seeing the others (one call each).
+2. **One merge:** Claude merges the critiques, which it sees only as Critic A, B and C, into one polished version. Where the critics disagree, it keeps both sides visible instead of forcing a consensus (one call).
+3. **Optional rebuttal:** with `--rebuttal`, each critic gets one reply to the merged version, shown as written (one more call each).
+
+That is 4 calls, or 7 with `--rebuttal`. There are no debate rounds, tie-breaks or sign-offs, because repeated rounds pull models toward agreeing with each other rather than toward better answers. The write-up lands in `~/.council/polish/<id>/polish.md` and reveals which AI was which letter. `--critics` and `--merger` take `provider[=model]`, for example `--critics claude-code,grok-cli=grok-4.6`.
+
 ## 🔎 Have it tear into your change
 
 The fastest way to see what Open Council does is to let it review something you were about to ship. No config, no `.council/` folder, nothing written to your repository and nothing executed.
